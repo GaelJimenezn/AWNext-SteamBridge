@@ -1,9 +1,9 @@
 [plugin]
-id = "com.example.boilerplate"
-name = "Boilerplate Plugin"
-version = "1.0.0"
-author = "Millennium"
-description = "A template plugin for Millennium."
+id = "org.awnext.steambridge"
+name = "AWNext Steam Bridge"
+version = "0.1.0"
+author = "AWNext Steam Bridge contributors"
+description = "Local AWN achievements for non-Steam library shortcuts."
 
 [assets]
 # reference resources to be included inside the plugin at compile time
@@ -45,7 +45,7 @@ entry = "webview/preload.ts"
 # output path
 # auto = automatically detect Millennium installation and install plugin
 # any other path = used as the output path for the build
-output_path = "auto"
+output_path = "dist"
 
 [dev]
 # plugin_name = "com.example.boilerplate"     # defaults to [plugin].id

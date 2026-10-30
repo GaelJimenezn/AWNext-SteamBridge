@@ -1,0 +1,12 @@
+{
+  "awnDataRoot": "C:/Users/USER/AppData/Roaming/Achievement Watcher Next",
+  "games": {
+    "REPLACE_WITH_SHORTCUT_APPID": {
+      "adapter": "x360recomp-toml",
+      "title": "Forza Horizon (Pinyon Shift)",
+      "titleId": "4D5309C9",
+      "stateRoot": "C:/Games/Forza Horizon/pinyon_shift_state",
+      "profile": "user"
+    }
+  }
+}
