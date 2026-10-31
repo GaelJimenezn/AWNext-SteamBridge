@@ -1,90 +1,392 @@
-import { useEffect, useMemo, useState } from 'react';
-import { getSteamShortcuts } from '../../core/steam-shortcuts';
+import { useEffect, useRef, useState } from 'react';
+import { getSteamLibraryGames } from '../../core/steam-shortcuts';
 
-type ArtKind = 'Grid' | 'Hero' | 'Logo' | 'Icon';
-type Provider = 'SteamGridDB' | 'RetroAchievements' | 'ScreenScraper' | 'Custom URL';
-type StoredArtwork = { url: string; provider: Provider; updatedAt: number };
-const kinds: ArtKind[] = ['Grid', 'Hero', 'Logo', 'Icon'];
-const providers: Provider[] = ['SteamGridDB', 'RetroAchievements', 'ScreenScraper', 'Custom URL'];
-const key = (appid: string, kind: ArtKind) => `awn-bridge:artwork:v1:${appid}:${kind}`;
-const field: React.CSSProperties = { color: '#dcebf4', background: '#112638', border: '1px solid #45657b', borderRadius: 6, padding: '10px 12px', width: '100%', boxSizing: 'border-box' };
-const btn: React.CSSProperties = { color: '#f4f9fc', background: '#27658b', border: '1px solid #4e8eb6', borderRadius: 6, padding: '9px 13px', cursor: 'pointer' };
-function load(appid: string, kind: ArtKind): StoredArtwork | null {
-  try {
-    const raw = window.localStorage.getItem(key(appid, kind));
-    if (!raw) return null;
-    const value = JSON.parse(raw) as StoredArtwork;
-    return typeof value.url === 'string' && /^https:\/\/[^\s]+$/i.test(value.url) ? value : null;
-  } catch { return null; }
+type Kind = 'portrait' | 'landscape' | 'hero' | 'logo' | 'icon';
+type Game = { id: number; name: string };
+type Account = { id: string };
+type Image = { id?: number; url: string; thumb?: string; width?: number; height?: number };
+type RpcResult<T> = {
+  ok: boolean;
+  data?: T[];
+  error?: string;
+  path?: string;
+  restartSteam?: boolean;
+};
+
+async function rpc<T>(name: string, ...args: string[]): Promise<RpcResult<T>> {
+  const fn = (backend as any)?.[name];
+  if (typeof fn !== 'function') throw new Error(`RPC unavailable: ${name}`);
+  const raw = await fn(...args);
+  return typeof raw === 'string'
+    ? JSON.parse(raw) as RpcResult<T>
+    : raw as RpcResult<T>;
 }
+
+const button: React.CSSProperties = {
+  background: '#245573', border: '1px solid #5286a5',
+  color: '#fff', padding: '9px 12px', borderRadius: 5, cursor: 'pointer',
+};
+
 export function ArtworkTab() {
-  const [games, setGames] = useState(getSteamShortcuts);
-  const [appid, setAppid] = useState('');
-  const [kind, setKind] = useState<ArtKind>('Grid');
-  const [provider, setProvider] = useState<Provider>('SteamGridDB');
-  const [url, setUrl] = useState('');
-  const [saved, setSaved] = useState<StoredArtwork | null>(null);
+  const games = getSteamLibraryGames();
+  const [selected, setSelected] = useState('');
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [account, setAccount] = useState('');
+  const [kind, setKind] = useState<Kind>('portrait');
+  const [matches, setMatches] = useState<Game[]>([]);
+  const [matched, setMatched] = useState<number | null>(null);
+  const [images, setImages] = useState<Image[]>([]);
+  const [chosen, setChosen] = useState<Image | null>(null);
+  const [showMatches, setShowMatches] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [message, setMessage] = useState('');
-  const [imageError, setImageError] = useState(false);
+  const seq = useRef(0);
+
+  const game = games.find(g => g.appid === selected);
+  const types: { id: Kind; label: string }[] = [
+    { id: 'portrait', label: 'Grid vertical' },
+    { id: 'landscape', label: 'Big Picture (ancha)' },
+    { id: 'hero', label: 'Hero' },
+    { id: 'logo', label: 'Logo' },
+    { id: 'icon', label: 'Icon' },
+  ];
+
   useEffect(() => {
-    const current = getSteamShortcuts();
-    setGames(current);
-    if (current.length && !appid) setAppid(current[0].appid);
+    void rpc<Account>('sgdb_accounts')
+      .then(result => {
+        if (!result.ok) {
+          setMessage(result.error || 'No se pudieron listar los perfiles.');
+          return;
+        }
+
+        const found = result.data || [];
+        setAccounts(found);
+
+        if (found.length === 1) {
+          setAccount(found[0].id);
+        }
+      })
+      .catch(error => setMessage(String(error)));
+
+    return () => { seq.current++; };
   }, []);
-  useEffect(() => {
-    const record = appid ? load(appid, kind) : null;
-    setSaved(record);
-    setUrl(record?.url ?? '');
-    if (record?.provider) setProvider(record.provider);
-    setMessage('');
-    setImageError(false);
-  }, [appid, kind]);
-  const valid = useMemo(() => /^https:\/\/[^\s]+$/i.test(url.trim()), [url]);
-  const chosen = games.find(g => g.appid === appid);
-  const save = () => {
-    if (!appid || !valid) { setMessage('Select a game and enter a valid HTTPS image URL.'); return; }
-    const record: StoredArtwork = { url: url.trim(), provider, updatedAt: Date.now() };
+
+  function filtered(list: Image[], type: Kind) {
+    return list.filter(item => {
+      if (typeof item.url !== 'string' || !item.url.startsWith('https://')) return false;
+      if (type === 'portrait' && item.width && item.height)
+        return item.height > item.width;
+      if (type === 'landscape' && item.width && item.height)
+        return item.width > item.height;
+      return true;
+    });
+  }
+
+  async function load(id: number, type: Kind, requestId: number) {
     try {
-      window.localStorage.setItem(key(appid, kind), JSON.stringify(record));
-      setSaved(record);
-      setMessage('Selection saved locally. Steam artwork has NOT been changed.');
-    } catch { setMessage('Could not save. Browser storage may be restricted.'); }
-  };
-  const reset = () => {
-    if (!appid) return;
-    try { window.localStorage.removeItem(key(appid, kind)); } catch { setMessage('Could not remove selection.'); return; }
-    setSaved(null); setUrl(''); setMessage('Local selection cleared.');
-  };
-  return <section style={{ maxWidth: 920, color: '#d6e6f2' }}>
-    <h2 style={{ color: '#fff', marginTop: 0 }}>Artwork Manager</h2>
-    <p style={{ color: '#9fb5c4', fontSize: 13 }}>Choose artwork yourself. Detection never changes your Steam images.</p>
-    <div style={{ background: '#1b3143', border: '1px solid #35536a', borderRadius: 9, padding: 18, display: 'grid', gap: 16 }}>
-      <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>Non-Steam game
-        <select value={appid} onChange={e => setAppid(e.target.value)} style={field}>
-          {!games.length && <option value="">No Steam shortcuts captured. Open Library first.</option>}
-          {games.map(g => <option key={g.appid} value={g.appid}>{g.name} ({g.appid})</option>)}
-        </select>
-      </label>
-      <div>
-        <div style={{ fontSize: 13, marginBottom: 8 }}>Artwork type</div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{kinds.map(k => <button key={k} type="button" onClick={() => setKind(k)} style={{ ...btn, background: kind === k ? '#367fa8' : '#20384b' }}>{k}</button>)}</div>
+      const endpoint = type === 'portrait' || type === 'landscape' ? 'grid' : type;
+      const result = await rpc<Image>('sgdb_artwork', String(id), endpoint);
+
+      if (requestId !== seq.current) return;
+      if (!result.ok) throw new Error(result.error || 'Artwork search failed');
+
+      const found = filtered(result.data || [], type);
+      setImages(found);
+      setMessage(found.length ? '' : 'No se encontraron imagenes.');
+    } catch (error) {
+      if (requestId === seq.current) setMessage(String(error));
+    } finally {
+      if (requestId === seq.current) setLoading(false);
+    }
+  }
+
+  async function selectGame(id: string) {
+    const requestId = ++seq.current;
+    setSelected(id);
+    setImages([]);
+    setMatches([]);
+    setMatched(null);
+    setChosen(null);
+    setMessage('');
+    setShowMatches(false);
+
+    const game = games.find(g => g.appid === id);
+    if (!game) return;
+
+    setLoading(true);
+
+    try {
+      const result = await rpc<Game>('sgdb_search', game.name);
+      if (requestId !== seq.current) return;
+      if (!result.ok) throw new Error(result.error || 'Game search failed');
+
+      const found = result.data || [];
+      setMatches(found);
+
+      if (!found.length) {
+        setMessage('No se encontraron coincidencias.');
+        setLoading(false);
+        return;
+      }
+
+      setMatched(found[0].id);
+      await load(found[0].id, kind, requestId);
+    } catch (error) {
+      if (requestId === seq.current) {
+        setMessage(String(error));
+        setLoading(false);
+      }
+    }
+  }
+
+  function selectMatch(id: number) {
+    const requestId = ++seq.current;
+    setMatched(id);
+    setChosen(null);
+    setImages([]);
+    setShowMatches(false);
+    setLoading(true);
+    void load(id, kind, requestId);
+  }
+
+  function selectKind(type: Kind) {
+    const requestId = ++seq.current;
+    setKind(type);
+    setChosen(null);
+    setImages([]);
+    if (matched !== null) {
+      setLoading(true);
+      void load(matched, type, requestId);
+    }
+  }
+
+  async function apply() {
+    if (!game || !chosen) return;
+
+    setApplying(true);
+    setMessage('');
+
+    try {
+      const client = (globalThis as any).SteamClient;
+
+      if (typeof client?.Apps?.SetCustomArtworkForApp !== 'function') {
+        throw new Error(
+          'Steam native artwork API unavailable in this window.'
+        );
+      }
+
+      const appId = Number(game.appid);
+
+      if (!Number.isSafeInteger(appId) ||
+          appId <= 0 ||
+          appId > 4294967295) {
+        throw new Error('Invalid Steam AppID.');
+      }
+
+      const result = await rpc<never>(
+        'sgdb_native_image',
+        chosen.url
+      ) as RpcResult<never> & {
+        base64?: string;
+        imageType?: 'png' | 'jpg';
+      };
+
+      if (!result.ok || !result.base64 || !result.imageType) {
+        throw new Error(result.error || 'Unable to prepare image.');
+      }
+
+      const assetTypes: Record<Kind, number> = {
+        portrait: 0,
+        hero: 1,
+        logo: 2,
+        landscape: 3,
+        icon: 4,
+      };
+
+      const assetType = assetTypes[kind];
+
+      await client.Apps.SetCustomArtworkForApp(
+        appId,
+        result.base64,
+        result.imageType,
+        assetType
+      );
+
+      setMessage(
+        'Artwork enviado a Steam. Revisa la biblioteca sin reiniciar.'
+      );
+    } catch (error) {
+      setMessage(`Error: ${String(error)}`);
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  return (
+    <div style={{ color: '#c7d5e0', maxWidth: 1200 }}>
+      <h2>Artwork Manager</h2>
+
+      <select aria-label="Juego" value={selected}
+        onChange={e => void selectGame(e.target.value)}
+        style={{ width: '100%', padding: 11, background: '#102638',
+          color: '#fff', border: '1px solid #45677b' }}>
+        <option value="">Selecciona un juego...</option>
+        {games.map((g, i) => (
+          <option key={`${g.appid}-${i}`} value={g.appid}>{g.name}</option>
+        ))}
+      </select>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap',
+        gap: 8, margin: '14px 0' }}>
+        {types.map(t => (
+          <button type="button" key={t.id}
+            style={{ ...button, background: kind === t.id ? '#347da5' : '#1d374a' }}
+            onClick={() => selectKind(t.id)}>
+            {t.label}
+          </button>
+        ))}
       </div>
-      <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>Preferred provider
-        <select value={provider} onChange={e => setProvider(e.target.value as Provider)} style={field}>{providers.map(p => <option key={p}>{p}</option>)}</select>
-      </label>
-      <p style={{ fontSize: 12, color: '#9fb5c4', margin: 0 }}>Provider search is not connected yet. Find an image yourself and paste its direct HTTPS image URL below. The provider is recorded as attribution, not searched automatically.</p>
-      <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>Direct image URL (HTTPS)
-        <input value={url} onChange={e => { setUrl(e.target.value); setImageError(false); }} placeholder="https://.../image.png" style={field} />
-      </label>
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 180, border: '1px dashed #517185', borderRadius: 8, background: '#0d1d2b', padding: 16 }}>
-        {valid && !imageError ? <img src={url.trim()} onError={() => setImageError(true)} alt={`${chosen?.name ?? 'Game'} ${kind} preview`} style={{ display: 'block', maxHeight: 280, maxWidth: '100%', objectFit: 'contain' }}/> : <span style={{ color: '#a5bbc9', fontSize: 13 }}>{imageError ? 'Image could not be loaded.' : 'Image preview appears here.'}</span>}
+
+      {game && matched !== null && (
+        <div style={{ padding: 10, background: '#1b3548',
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+          <span>Coincidencia: {matches.find(m => m.id === matched)?.name}</span>
+          <button style={button} onClick={() => setShowMatches(!showMatches)}>
+            Cambiar coincidencia
+          </button>
+          {showMatches && (
+            <select aria-label="Coincidencia" value={matched}
+              onChange={e => selectMatch(Number(e.target.value))}
+              style={{ padding: 8, background: '#102638', color: '#fff' }}>
+              {matches.map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      {loading && <p>Cargando imagenes...</p>}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 270px',
+        gap: 14, marginTop: 14, alignItems: 'start' }}>
+        <div style={{ display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill,minmax(135px,1fr))',
+          gap: 9 }}>
+          {images.slice(0, 60).map((image, index) => (
+            <button type="button"
+              key={`${image.id || index}-${index}`}
+              onClick={() => setChosen(image)}
+              style={{ padding: 5, background: '#162d3f',
+                cursor: 'pointer',
+                border: chosen?.url === image.url
+                  ? '2px solid #66c0f4' : '1px solid #45677b' }}>
+              <img src={image.thumb || image.url}
+                alt={`Artwork ${index + 1}`}
+                loading="lazy"
+                style={{ width: '100%', height: 140, objectFit: 'contain' }}/>
+            </button>
+          ))}
+        </div>
+
+        <aside style={{ position: 'sticky', top: 14,
+          padding: 12, background: '#1b3548',
+          border: '1px solid #45677b', borderRadius: 8 }}>
+          <strong>Vista previa</strong>
+
+          {chosen ? (
+            <img src={chosen.url} alt="Imagen elegida"
+              style={{ display: 'block', width: '100%',
+                maxHeight: 250, objectFit: 'contain', margin: '12px 0' }}/>
+          ) : (
+            <p style={{ color: '#9fb8c9', fontSize: 12 }}>
+              Selecciona una imagen para aplicarla.
+            </p>
+          )}
+
+                    {/* AWN_PROFILE_SELECTOR_V2 */}
+          <label
+            htmlFor="steam-profile"
+            style={{
+              display: 'block',
+              marginBottom: 7,
+              fontSize: 12
+            }}
+          >
+            Perfil de Steam
+          </label>
+
+          <select
+            id="steam-profile"
+            value={account}
+            onChange={e => setAccount(e.target.value)}
+            style={{
+              width: '100%',
+              padding: 9,
+              marginBottom: 12,
+              background: '#102638',
+              color: '#fff',
+              border: '1px solid #45677b',
+              borderRadius: 5
+            }}
+          >
+            <option value="">Selecciona un perfil...</option>
+
+            {accounts.map(item => (
+              <option key={item.id} value={item.id}>
+                Steam userdata: {item.id}
+              </option>
+            ))}
+          </select>
+
+          <label
+            htmlFor="manual-steam-profile"
+            style={{
+              display: 'block',
+              fontSize: 11,
+              color: '#9fb8c9',
+              marginBottom: 6
+            }}
+          >
+            ID manual, si tu perfil no aparece
+          </label>
+
+          <input
+            id="manual-steam-profile"
+            value={account}
+            onChange={e => setAccount(
+              e.target.value.replace(/\D/g, '')
+            )}
+            placeholder="ID de la carpeta userdata"
+            style={{
+              display: 'block',
+              boxSizing: 'border-box',
+              width: '100%',
+              padding: 9,
+              marginBottom: 14,
+              background: '#102638',
+              border: '1px solid #45677b',
+              borderRadius: 5,
+              color: '#fff'
+            }}
+          />
+<button type="button" style={{ ...button, width: '100%',
+            background: '#287a50' }}
+            disabled={!chosen || !account || applying}
+            onClick={() => void apply()}>
+            {applying ? 'Aplicando...' : 'Aplicar sin reiniciar'}
+          </button>
+
+          <p style={{ fontSize: 11, color: '#9fb8c9' }}>
+            Solo cambia {kind} del juego seleccionado.
+            Se respalda la imagen anterior.
+          </p>
+        </aside>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <button type="button" onClick={save} disabled={!valid || !appid} style={{ ...btn, opacity: valid && appid ? 1 : .5 }}>Save selection</button>
-        <button type="button" onClick={reset} disabled={!saved} style={{ ...btn, background: '#2a3744', opacity: saved ? 1 : .5 }}>Clear saved selection</button>
-        <span style={{ color: '#9fb5c4', fontSize: 12 }}>{saved ? 'Saved for this game and type' : 'Not saved'}</span>
-      </div>
-      {message && <p role="status" style={{ margin: 0, color: '#94c9e9', fontSize: 12 }}>{message}</p>}
+
+      {message && <p role="status" style={{
+        color: '#aad6ee', marginTop: 14 }}>{message}</p>}
     </div>
-  </section>;
+  );
 }

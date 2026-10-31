@@ -14,45 +14,44 @@ const button: React.CSSProperties = {
 
 function ManagerWindow({ popup, close }: { popup: Window; close: () => void }) {
   const [page, setPage] = useState<Page>('games');
-  const [maximized, setMaximized] = useState(false);
 
   // Chromium may restrict moving/positioning popup windows. No native titlebar is promised.
+  // AWN_DRAG_ONLY_V1
+  // The host can restrict window.moveTo for popup windows.
   const onDragStart = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
+    if (
+      event.button !== 0 ||
+      (event.target as HTMLElement).closest('button')
+    ) return;
+
+    event.preventDefault();
+
     const startX = event.screenX;
     const startY = event.screenY;
-    const initialX = popup.screenX;
-    const initialY = popup.screenY;
-    let moved = false;
-    const move = (e: MouseEvent) => {
-      const dx = e.screenX - startX;
-      const dy = e.screenY - startY;
-      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
-      if (moved) {
-        try { popup.moveTo(initialX + dx, initialY + dy); } catch { /* restricted by host */ }
+    const originX = popup.screenX;
+    const originY = popup.screenY;
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const x = originX + moveEvent.screenX - startX;
+      const y = originY + moveEvent.screenY - startY;
+
+      try {
+        popup.moveTo(x, y);
+      } catch {
+        // Steam/Chromium may refuse window movement.
       }
     };
-    const up = () => {
-      popup.document.removeEventListener('mousemove', move);
-      popup.document.removeEventListener('mouseup', up);
+
+    const onUp = () => {
+      popup.document.removeEventListener('mousemove', onMove);
+      popup.document.removeEventListener('mouseup', onUp);
+      popup.removeEventListener('blur', onUp);
     };
-    popup.document.addEventListener('mousemove', move);
-    popup.document.addEventListener('mouseup', up, { once: true });
-  };
 
-  const toggleMax = () => {
-    try {
-      if (!maximized) {
-        popup.resizeTo(popup.screen.availWidth, popup.screen.availHeight);
-        popup.moveTo(0, 0);
-      } else {
-        popup.resizeTo(1120, 790);
-        popup.moveTo(100, 80);
-      }
-      setMaximized(!maximized);
-    } catch { /* Steam may restrict popup geometry */ }
+    popup.document.addEventListener('mousemove', onMove);
+    popup.document.addEventListener('mouseup', onUp, { once: true });
+    popup.addEventListener('blur', onUp, { once: true });
   };
-
   return (
     <div style={{ minHeight: '100vh', color: '#c7d5e0', fontFamily: 'Arial, sans-serif', background: '#0f1b28' }}>
       {/* AWN_TITLEBAR_SVG_V1 */}
@@ -88,23 +87,6 @@ function ManagerWindow({ popup, close }: { popup: Window; close: () => void }) {
         </div>
 
         <div style={{ display: 'flex', gap: 6 }}>
-          <button type="button" style={button}
-            title="Return focus to Steam"
-            onClick={() => popup.blur()}>
-            <svg width="18" height="18" viewBox="0 0 24 24">
-              <path d="M5 12h14" fill="none"
-                stroke="currentColor" strokeWidth="2"/>
-            </svg>
-          </button>
-
-          <button type="button" style={button}
-            title="Toggle window size" onClick={toggleMax}>
-            <svg width="18" height="18" viewBox="0 0 24 24">
-              <rect x="5" y="5" width="14" height="14"
-                rx="1" fill="none" stroke="currentColor" strokeWidth="2"/>
-            </svg>
-          </button>
-
           <button type="button"
             style={{ ...button, background: '#633342' }}
             title="Close" onClick={close}>

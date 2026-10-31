@@ -31,3 +31,69 @@ end
 function get_provider_status()
     return require("services.provider_status").status()
 end
+
+-- SteamGridDB backend HTTP transport
+local sgdb = require("services.steamgriddb")
+
+---@ffi
+---@param key string
+---@return string
+function sgdb_configure(key)
+    return sgdb.configure(key)
+end
+
+---@ffi
+---@return string
+function sgdb_status()
+    return sgdb.status()
+end
+
+---@ffi
+---@return string
+function sgdb_disconnect()
+    return sgdb.disconnect()
+end
+
+---@ffi
+---@return string
+function sgdb_test()
+    return sgdb.test()
+end
+
+---@ffi
+---@param title string
+---@return string
+function sgdb_search(title)
+    return sgdb.search(title)
+end
+
+---@ffi
+---@param game_id string
+---@param kind string
+---@return string
+function sgdb_artwork(game_id, kind)
+    return sgdb.artwork(game_id, kind)
+end
+
+---@ffi
+---@return string
+function sgdb_accounts()
+    return require("services.steamgriddb").accounts()
+end
+
+---@ffi
+---@param appid string
+---@param account string
+---@param kind string
+---@param url string
+---@return string
+function sgdb_apply(appid, account, kind, url)
+    return require("services.steamgriddb").apply(appid, account, kind, url)
+end
+
+---@ffi
+---@param url string
+---@return string
+function sgdb_native_image(url)
+    return require("services.steamgriddb").native_image(url)
+end

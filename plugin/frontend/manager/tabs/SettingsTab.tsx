@@ -1,47 +1,165 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-type ProviderStatus = { ok?: boolean; awn?: { connected?: boolean; total?: number; external?: number; version?: string; reason?: string } };
-const sites = [
-  { name: 'SteamGridDB', role: 'Artwork API', url: 'https://www.steamgriddb.com/profile/preferences/api', state: 'Not connected' },
-  { name: 'RetroAchievements', role: 'Emulated games and achievements', url: 'https://retroachievements.org/controlpanel.php', state: 'Not connected' },
-  { name: 'ScreenScraper', role: 'Retro artwork API', url: 'https://www.screenscraper.fr/', state: 'Not connected' },
-];
-const panel: React.CSSProperties = { border: '1px solid #36556a', borderRadius: 9, background: '#1a3042', padding: 18 };
-const action: React.CSSProperties = { background: '#28678c', color: 'white', border: '1px solid #4988ad', padding: '9px 13px', cursor: 'pointer', borderRadius: 6 };
+type Result = {
+  ok?: boolean;
+  configured?: boolean;
+  persistent?: boolean;
+  error?: string;
+};
+
+async function rpc(name: string, ...args: string[]): Promise<Result> {
+  const fn = (backend as any)?.[name];
+  if (typeof fn !== 'function') throw new Error(`RPC unavailable: ${name}`);
+  const raw = await fn(...args);
+  return typeof raw === 'string' ? JSON.parse(raw) as Result : raw as Result;
+}
+
+const button: React.CSSProperties = {
+  background: '#286285', border: '1px solid #5088a5',
+  borderRadius: 5, color: '#fff', padding: '10px 13px',
+  cursor: 'pointer',
+};
+
+const field: React.CSSProperties = {
+  width: '100%', boxSizing: 'border-box',
+  padding: 11, background: '#102334',
+  color: '#fff', border: '1px solid #45677b',
+  borderRadius: 5,
+};
+
 export function SettingsTab() {
-  const [status, setStatus] = useState<ProviderStatus | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const test = async () => {
-    setBusy(true); setError('');
+  const [open, setOpen] = useState('sgdb');
+  const [key, setKey] = useState('');
+  const [connected, setConnected] = useState(false);
+  const [working, setWorking] = useState(false);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    void rpc('sgdb_status')
+      .then(result => setConnected(!!result.configured))
+      .catch(error => setMessage(String(error)));
+  }, []);
+
+  async function perform(action: string, ...args: string[]) {
+    setWorking(true);
+    setMessage('');
+
     try {
-      const fn = (backend as unknown as { get_provider_status?: () => Promise<ProviderStatus | string> }).get_provider_status;
-      if (typeof fn !== 'function') throw new Error('RPC not registered. Restart Steam after installing.');
-      const raw = await fn();
-      const value: ProviderStatus = typeof raw === 'string' ? JSON.parse(raw) as ProviderStatus : raw;
-      if (!value || typeof value !== 'object') throw new Error('Invalid response from Lua backend.');
-      setStatus(value);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); }
-  };
-  return <div style={{ maxWidth: 880, display: 'grid', gap: 14 }}>
-    <h2 style={{ margin: 0, color: '#fff' }}>Provider Settings</h2>
-    <p style={{ margin: 0, color: '#9fb8ca', fontSize: 13 }}>Test local AWN integration. External API credentials are not stored yet.</p>
-    <section style={panel}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <div><strong>Achievement Watcher Next</strong><div style={{ fontSize: 12, color: '#9fb8ca', marginTop: 5 }}>Local achievement database</div></div>
-        <button type="button" disabled={busy} onClick={() => { void test(); }} style={action}>{busy ? 'Checking...' : 'Test AWN'}</button>
-      </div>
-      {status?.awn && <div style={{ marginTop: 12, fontSize: 13, color: status.awn.connected ? '#7de1a5' : '#e9b982' }}>
-        {status.awn.connected ? `Connected - ${status.awn.total ?? 0} games (${status.awn.external ?? 0} external), AWN ${status.awn.version ?? '?'}` : `Unavailable - ${status.awn.reason ?? 'Unknown error'}`}
-      </div>}
-      {error && <p style={{ fontSize: 12, color: '#eda7a7' }}>{error}</p>}
-    </section>
-    {sites.map(s => <section key={s.name} style={panel}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><strong>{s.name}</strong><span style={{ fontSize: 12, color: '#e6bc83' }}>{s.state}</span></div>
-      <p style={{ fontSize: 12, color: '#a9bdcb' }}>{s.role}</p>
-      <a href={s.url} target="_blank" rel="noreferrer" style={{ color: '#66c0f4', fontSize: 12 }}>Open provider setup website</a>
-    </section>)}
-    <p style={{ fontSize: 12, color: '#9fb8ca' }}>API keys will be entered here only after secure local storage and backend-only requests are implemented. Do not paste secrets into the plugin code or console.</p>
-  </div>;
+      const result = await rpc(action, ...args);
+      if (!result.ok) throw new Error(result.error || 'Unknown error');
+
+      if (action === 'sgdb_configure') {
+        setConnected(true);
+        setKey('');
+        setMessage('API key guardada con Windows DPAPI.');
+      } else if (action === 'sgdb_test') {
+        setMessage('Conexion con SteamGridDB correcta.');
+      } else {
+        setConnected(false);
+        setKey('');
+        setMessage('SteamGridDB desconectado.');
+      }
+    } catch (error) {
+      setMessage(String(error));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  const sections = [
+    { id: 'awn', name: 'Achievement Watcher Next', info: 'Logros locales' },
+    { id: 'sgdb', name: 'SteamGridDB', info: 'Artwork y API key' },
+    { id: 'ra', name: 'RetroAchievements', info: 'Logros de emuladores' },
+    { id: 'ss', name: 'ScreenScraper', info: 'Metadatos y arte retro' },
+  ];
+
+  return (
+    <div style={{ maxWidth: 870, color: '#c7d5e0' }}>
+      <h2>Provider Settings</h2>
+
+      {sections.map(section => (
+        <section key={section.id}
+          style={{ background: '#192e40', border: '1px solid #35566b',
+            borderRadius: 8, marginBottom: 12, overflow: 'hidden' }}>
+
+          <button type="button"
+            onClick={() => { setOpen(open === section.id ? '' : section.id); setMessage(''); }}
+            style={{ display: 'flex', width: '100%', padding: 16,
+              justifyContent: 'space-between', alignItems: 'center',
+              background: 'transparent', border: 0, color: '#fff',
+              cursor: 'pointer', textAlign: 'left' }}>
+            <span>
+              <strong>{section.name}</strong>
+              <small style={{ display: 'block', color: '#9fb8c9', marginTop: 4 }}>
+                {section.info}
+              </small>
+            </span>
+            <svg width="18" height="18" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" strokeWidth="2">
+              <path d={open === section.id ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'}/>
+            </svg>
+          </button>
+
+          {open === section.id && (
+            <div style={{ padding: 16, borderTop: '1px solid #35566b' }}>
+              {section.id === 'awn' && <p>AWN sigue conectado mediante su backend actual.</p>}
+
+              {section.id === 'sgdb' && (
+                <>
+                  <p style={{ color: connected ? '#95dca9' : '#cdb48f' }}>
+                    {connected ? 'API key configurada y guardada.' : 'Sin API key configurada.'}
+                  </p>
+
+                  <input type="password" aria-label="SteamGridDB API key"
+                    autoComplete="off" placeholder="API key"
+                    value={key} onChange={e => setKey(e.target.value)}
+                    style={field}/>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                    <button style={button} disabled={!key.trim() || working}
+                      onClick={() => void perform('sgdb_configure', key.trim())}>
+                      Guardar / Aplicar
+                    </button>
+                    <button style={button} disabled={!connected || working}
+                      onClick={() => void perform('sgdb_test')}>
+                      Probar conexion
+                    </button>
+                    <button style={button} disabled={!connected || working}
+                      onClick={() => void perform('sgdb_disconnect')}>
+                      Desconectar
+                    </button>
+                    <button style={button} onClick={() => window.open(
+                      'https://www.steamgriddb.com/profile/preferences/api',
+                      '_blank', 'noopener,noreferrer'
+                    )}>Obtener API key</button>
+                  </div>
+                  {message && <p role="status">{message}</p>}
+                </>
+              )}
+
+              {section.id === 'ra' && (
+                <>
+                  <p>RetroAchievements: conexion pendiente del cliente de backend.</p>
+                  <button style={button} onClick={() => window.open(
+                    'https://retroachievements.org/controlpanel.php',
+                    '_blank', 'noopener,noreferrer'
+                  )}>Obtener perfil y Web API key</button>
+                </>
+              )}
+
+              {section.id === 'ss' && (
+                <>
+                  <p>ScreenScraper: requiere usuario y credenciales de aplicacion.</p>
+                  <button style={button} onClick={() => window.open(
+                    'https://www.screenscraper.fr/',
+                    '_blank', 'noopener,noreferrer'
+                  )}>Crear cuenta / Iniciar sesion</button>
+                </>
+              )}
+            </div>
+          )}
+        </section>
+      ))}
+    </div>
+  );
 }
