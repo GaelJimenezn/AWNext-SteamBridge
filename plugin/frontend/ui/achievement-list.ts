@@ -27,7 +27,20 @@ export function buildAchievementList(
 
   const unlocked = achievements.filter((a) => a.unlocked);
   const locked = achievements.filter((a) => !a.unlocked);
-  const ordered = [...unlocked, ...locked];
+  // Mostrar primero los logros conseguidos, de mas reciente a mas antiguo.
+  // Los logros sin fecha y los bloqueados mantienen su orden relativo.
+  const hasDate = (a: Achievement): boolean =>
+    typeof a.unlockTime === 'number' &&
+    Number.isFinite(a.unlockTime) &&
+    a.unlockTime > 0;
+
+  const ordered = [...achievements].sort((a, b) => {
+    if (a.unlocked !== b.unlocked) return a.unlocked ? -1 : 1;
+    if (!a.unlocked) return 0;
+    const aTime = hasDate(a) ? a.unlockTime : -1;
+    const bTime = hasDate(b) ? b.unlockTime : -1;
+    return bTime - aTime;
+  });
 
   const cards = ordered.map((achievement) => {
     const element = buildAchievementCard(doc, achievement);

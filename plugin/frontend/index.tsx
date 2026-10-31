@@ -1,3 +1,4 @@
+import { captureSteamShortcuts } from './core/steam-shortcuts';
 import { Manager } from './manager/Manager';
 import { definePlugin, Millennium } from 'millennium';
 import {
@@ -91,6 +92,7 @@ function startObserving(doc: Document): void {
     doc.defaultView?.name || 'Main',
   );
 
+  captureSteamShortcuts(doc);
   let active = '';
   let lastRead = 0;
   let lastResult: AchievementResult | null = null;
@@ -99,6 +101,7 @@ function startObserving(doc: Document): void {
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const update = async () => {
+    captureSteamShortcuts(doc);
     const id = shortcutId(doc);
     if (!id) {
       if (active) {
@@ -152,7 +155,7 @@ function startObserving(doc: Document): void {
     console.info('[AWNext Bridge][BACKEND] Invocando backend.get_achievements() para', id);
     let result: AchievementResult;
     try {
-      const response = await backend.get_achievements(id);
+      const response = await (backend as any).get_achievements(id, getPageGameTitle(doc) ?? "");
 
       result = (
         typeof response === 'string' ? JSON.parse(response) : response

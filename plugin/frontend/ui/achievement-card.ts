@@ -15,7 +15,7 @@ export function buildAchievementCard(doc: Document, achievement: Achievement): H
   const iconWrap = make(doc, 'div');
   iconWrap.style.cssText = achievementStyles.icon;
 
-  if (achievement.icon?.startsWith('data:image/png;base64,')) {
+  if (typeof achievement.icon === 'string' && (achievement.icon.startsWith('data:image/png;base64,') || /^https:\/\//i.test(achievement.icon))) {
     const image = doc.createElement('img');
     image.alt = achievement.name;
     image.src = achievement.icon;

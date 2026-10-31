@@ -41,7 +41,13 @@ export function buildAchievementSummary(
   const preview = make(doc, 'div');
   preview.style.cssText = achievementStyles.preview;
 
-  const recent = [...unlocked].sort((a, b) => b.unlockTime - a.unlockTime).slice(0, 4);
+  const recent = [...unlocked]
+    .sort((a, b) => {
+      const aTime = Number.isFinite(a.unlockTime) && a.unlockTime > 0 ? a.unlockTime : -1;
+      const bTime = Number.isFinite(b.unlockTime) && b.unlockTime > 0 ? b.unlockTime : -1;
+      return bTime - aTime;
+    })
+    .slice(0, 4);
 
   for (const achievement of recent) {
     const slot = make(doc, 'div');
@@ -52,7 +58,7 @@ export function buildAchievementSummary(
       'display:flex;align-items:center;' +
       'justify-content:center;overflow:hidden';
 
-    if (achievement.icon?.startsWith('data:image/png;base64,')) {
+    if (typeof achievement.icon === 'string' && (achievement.icon.startsWith('data:image/png;base64,') || /^https:\/\//i.test(achievement.icon))) {
       const image = doc.createElement('img');
       image.src = achievement.icon;
       image.alt = achievement.name;

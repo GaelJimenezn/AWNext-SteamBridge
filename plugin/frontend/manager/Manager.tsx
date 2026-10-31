@@ -1,73 +1,174 @@
-import { useState } from 'react';
-
-import type { ManagerTab } from './models/manager';
-
-import { ManagerTabs } from './components/ManagerTabs';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { GamesTab } from './tabs/GamesTab';
-import { SourcesTab } from './tabs/SourcesTab';
-import { AppearanceTab } from './tabs/AppearanceTab';
+import { SettingsTab } from './tabs/SettingsTab';
+import { ArtworkTab } from './tabs/ArtworkTab';
 import { managerStyles } from './styles/manager-styles';
 
-/** Main settings view registered by Millennium. */
-export function Manager() {
-  const [activeTab, setActiveTab] = useState<ManagerTab>('games');
+type Page = 'games' | 'artwork' | 'settings';
+
+const button: React.CSSProperties = {
+  border: '1px solid #34536a', borderRadius: 5, padding: '9px 14px',
+  background: '#1d3b52', color: '#d9e8f3', cursor: 'pointer', fontWeight: 600,
+};
+
+function ManagerWindow({ popup, close }: { popup: Window; close: () => void }) {
+  const [page, setPage] = useState<Page>('games');
+  const [maximized, setMaximized] = useState(false);
+
+  // Chromium may restrict moving/positioning popup windows. No native titlebar is promised.
+  const onDragStart = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
+    const startX = event.screenX;
+    const startY = event.screenY;
+    const initialX = popup.screenX;
+    const initialY = popup.screenY;
+    let moved = false;
+    const move = (e: MouseEvent) => {
+      const dx = e.screenX - startX;
+      const dy = e.screenY - startY;
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      if (moved) {
+        try { popup.moveTo(initialX + dx, initialY + dy); } catch { /* restricted by host */ }
+      }
+    };
+    const up = () => {
+      popup.document.removeEventListener('mousemove', move);
+      popup.document.removeEventListener('mouseup', up);
+    };
+    popup.document.addEventListener('mousemove', move);
+    popup.document.addEventListener('mouseup', up, { once: true });
+  };
+
+  const toggleMax = () => {
+    try {
+      if (!maximized) {
+        popup.resizeTo(popup.screen.availWidth, popup.screen.availHeight);
+        popup.moveTo(0, 0);
+      } else {
+        popup.resizeTo(1120, 790);
+        popup.moveTo(100, 80);
+      }
+      setMaximized(!maximized);
+    } catch { /* Steam may restrict popup geometry */ }
+  };
 
   return (
-    <div style={managerStyles.panel}>
-      <header
+    <div style={{ minHeight: '100vh', color: '#c7d5e0', fontFamily: 'Arial, sans-serif', background: '#0f1b28' }}>
+      {/* AWN_TITLEBAR_SVG_V1 */}
+      <div
+        onMouseDown={onDragStart}
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 12,
-          minWidth: 0,
+          justifyContent: 'space-between',
+          gap: 16,
+          padding: '12px 18px',
+          background: '#152f44',
+          borderBottom: '1px solid #3d6178',
+          userSelect: 'none',
+          cursor: 'move',
         }}
       >
-        <div
-          aria-hidden="true"
-          style={{
-            width: 42,
-            height: 42,
-            flex: '0 0 42px',
-            display: 'grid',
-            placeItems: 'center',
-            borderRadius: 6,
-            background: '#203b51',
-            color: '#66c0f4',
-            fontSize: 23,
-          }}
-        >
-          ★
-        </div>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              color: '#ffffff',
-              fontWeight: 700,
-              fontSize: 16,
-            }}
-          >
-            Administrador
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M12 2.5l2.8 6.3 6.8.7-5.1 4.5 1.5 6.6L12 17.2l-6 3.4 1.5-6.6L2.4 9.5l6.8-.7L12 2.5z"
+              fill="#66c0f4"
+            />
+          </svg>
+          <div>
+            <div style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>
+              AWNext Steam Bridge
+            </div>
+            <div style={{ color: '#8eb8ce', fontSize: 11 }}>
+              Non-Steam library manager
+            </div>
           </div>
-          <div style={managerStyles.muted}>Gestiona tus logros locales</div>
         </div>
 
-        <span
-          style={{
-            color: '#91a7b8',
-            fontSize: 10,
-            alignSelf: 'flex-start',
-          }}
-        >
-          v0.1
-        </span>
-      </header>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button type="button" style={button}
+            title="Return focus to Steam"
+            onClick={() => popup.blur()}>
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path d="M5 12h14" fill="none"
+                stroke="currentColor" strokeWidth="2"/>
+            </svg>
+          </button>
 
-      <ManagerTabs activeTab={activeTab} onChange={setActiveTab} />
+          <button type="button" style={button}
+            title="Toggle window size" onClick={toggleMax}>
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <rect x="5" y="5" width="14" height="14"
+                rx="1" fill="none" stroke="currentColor" strokeWidth="2"/>
+            </svg>
+          </button>
 
-      {activeTab === 'games' && <GamesTab />}
-      {activeTab === 'sources' && <SourcesTab />}
-      {activeTab === 'appearance' && <AppearanceTab />}
+          <button type="button"
+            style={{ ...button, background: '#633342' }}
+            title="Close" onClick={close}>
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path d="M5 5l14 14M19 5L5 19"
+                fill="none" stroke="currentColor" strokeWidth="2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div style={{ display: 'flex', minHeight: 'calc(100vh - 66px)' }}>
+        <nav style={{ width: 180, flexShrink: 0, borderRight: '1px solid #2b4558', background: '#101e2d', padding: 14 }}>
+          {([
+            ['games', 'Games'],
+            ['artwork', 'Artwork'],
+            ['settings', 'Settings'],
+          ] as const).map(([id, label]) => (
+            <button type="button" key={id} onClick={() => setPage(id)} style={{ ...button, width: '100%', textAlign: 'left', marginBottom: 10,
+              background: page === id ? '#27668c' : '#1a2d3f', borderColor: page === id ? '#66c0f4' : '#2b4558' }}>
+              {label}
+            </button>
+          ))}
+        </nav>
+        <main style={{ flex: 1, minWidth: 0, padding: 20, boxSizing: 'border-box' }}>
+          {page === 'games' && <GamesTab />}
+          {page === 'artwork' && <ArtworkTab />}
+          {page === 'settings' && <SettingsTab />}
+        </main>
+      </div>
     </div>
   );
+}
+
+export function Manager() {
+  const [popup, setPopup] = useState<Window | null>(null);
+  const [fallback, setFallback] = useState(false);
+  const openManager = () => {
+    const win = window.open('', 'AWNextGameManager', 'popup=yes,width=1120,height=790,resizable=yes,scrollbars=yes');
+    if (!win) { setFallback(true); return; }
+    win.document.title = 'AWNext Steam Bridge - Game Manager';
+    if (!win.document.getElementById('awn-popup-root')) {
+      win.document.body.style.cssText = 'margin:0;background:#0f1b28;min-height:100vh';
+      const root = win.document.createElement('div');
+      root.id = 'awn-popup-root';
+      win.document.body.appendChild(root);
+    }
+    setPopup(win);
+    win.focus();
+  };
+  useEffect(() => {
+    if (!popup) return undefined;
+    const onClose = () => setPopup(null);
+    popup.addEventListener('beforeunload', onClose);
+    return () => popup.removeEventListener('beforeunload', onClose);
+  }, [popup]);
+  const root = popup?.document.getElementById('awn-popup-root');
+  return <div style={managerStyles.panel}>
+    <div style={{ fontWeight: 700, color: '#fff', fontSize: 16 }}>AWNext Steam Bridge</div>
+    <p style={managerStyles.muted}>Non-Steam games, achievements, and artwork</p>
+    <button type="button" onClick={openManager} style={{ ...button, width: '100%', padding: 12 }}>Open Game Manager</button>
+    {root && popup && createPortal(<ManagerWindow popup={popup} close={() => { popup.close(); setPopup(null); }} />, root)}
+    {fallback && <div style={{ marginTop: 12 }}>
+      <p>Popup blocked. Open Steam library, then try again.</p>
+      <button type="button" style={button} onClick={() => setFallback(false)}>Dismiss</button>
+    </div>}
+  </div>;
 }

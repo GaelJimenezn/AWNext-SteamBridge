@@ -10,7 +10,8 @@ local function get(key, ttl_seconds, loader, cache_missing)
     local cached = entries[key]
 
     if cached and now < cached.expires then
-        return cached.value == false and nil or cached.value
+        if cached.value == false then return nil end
+        return cached.value
     end
 
     local value = loader()
