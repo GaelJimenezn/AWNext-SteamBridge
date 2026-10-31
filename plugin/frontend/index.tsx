@@ -1,3 +1,4 @@
+import { Manager } from './manager/Manager';
 import { definePlugin, Millennium } from 'millennium';
 import {
   AchievementResult,
@@ -223,13 +224,7 @@ function windowCreated(context: {
   if (!doc) return;
 
   // Filter out popups that are definitely not the library window
-  if (
-    name.includes('Login') ||
-    name.includes('Overlay') ||
-    name.includes('Friends') ||
-    name.includes('Chat') ||
-    name.includes('Menu')
-  ) {
+  if (/(?:login|overlay|friends|chat|menu|contextmenu|popupwindow)/i.test(name)) {
     return;
   }
 
@@ -282,12 +277,13 @@ export default definePlugin(() => {
         response && typeof response === 'object' ? Object.keys(response) : 'not an object',
       );
 
-      if (typeof response !== 'string') {
-        console.error('[AWN-DEBUG] Unexpected response type:', typeof response);
+      const parsed = typeof response === 'string' ? JSON.parse(response) : response;
+
+      if (!parsed || typeof parsed !== 'object' || parsed.ok !== true) {
+        console.error('[AWN-DEBUG] Invalid RPC response:', parsed);
         return;
       }
 
-      const parsed = JSON.parse(response);
       console.info('[AWN-DEBUG] RPC SUCCESS:', parsed);
     } catch (error) {
       console.error('[AWN-DEBUG] RPC FAILED:', error);
@@ -306,8 +302,6 @@ export default definePlugin(() => {
   return {
     title: 'AWNext Steam Bridge',
     icon: <span>â˜…</span>,
-    content: (
-      <div>Logros locales de AWN para accesos directos configurados en bridge-config.json.</div>
-    ),
+    content: <Manager />,
   };
 });
