@@ -1,7 +1,8 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string]$SteamRoot,
-    [switch]$Apply
+    [switch]$Apply,
+    [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,7 +36,10 @@ if (-not (Test-Path -LiteralPath (Join-Path $steam 'steam.exe') -PathType Leaf) 
 }
 $targetPackage = Join-Path $pluginDir $packageName
 $targetConfig = Join-Path $pluginDir $configName
-if (Test-Path -LiteralPath $targetPackage) { throw "El paquete ya existe; no se sobrescribira: $targetPackage" }
+if ((Test-Path -LiteralPath $targetPackage) -and -not $Force) {
+    Write-Host "[AVISO] El paquete ya existe: $targetPackage (usa -Force para sobrescribir o actualizar)"
+    if ($Apply) { throw "El paquete ya existe; no se sobrescribira sin -Force: $targetPackage" }
+}
 
 $starlight = Join-Path $projectRoot 'plugin\node_modules\.bin\starlight.exe'
 if (-not (Test-Path -LiteralPath $starlight -PathType Leaf)) { throw "Falta Starlight: $starlight" }
@@ -74,7 +78,7 @@ if (-not $Apply) {
 }
 
 if ($PSCmdlet.ShouldProcess($targetPackage, 'Instalar paquete AWNext Steam Bridge')) {
-    Copy-Item -LiteralPath $package -Destination $targetPackage -ErrorAction Stop
+    Copy-Item -LiteralPath $package -Destination $targetPackage -Force -ErrorAction Stop
     $sourceHash = (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash
     $targetHash = (Get-FileHash -LiteralPath $targetPackage -Algorithm SHA256).Hash
     if ($sourceHash -ne $targetHash) { throw 'La copia del paquete no coincide con el original.' }

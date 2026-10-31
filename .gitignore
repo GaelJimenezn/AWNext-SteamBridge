@@ -6,3 +6,7 @@ references/
 !.env.example
 *.log
 plugin/bridge-config.json
+
+/plugin/bridge-config.json
+
+/plugin/dist/

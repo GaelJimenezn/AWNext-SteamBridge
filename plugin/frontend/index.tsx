@@ -1,6 +1,8 @@
 import { definePlugin, Millennium } from 'millennium';
 import {
   AchievementResult,
+  findShortcutAppIdByName,
+  getPageGameTitle,
   hasPlacement,
   PANEL_ID,
   placePanel,
@@ -11,60 +13,108 @@ import {
 const observed = new WeakSet<Document>();
 
 /**
- * Extract shortcut AppID from the current page URL.
+ * Extract shortcut AppID using Steam navigation, stores, and URL fallback.
  * Non-Steam shortcuts have numeric AppIDs in the range [2^31, 2^32-1].
  */
 function shortcutId(doc: Document): string | null {
-  const href = doc.defaultView?.location?.href ?? '';
-  const match = href.match(/\/app\/(\d+)(?:[/?#]|$)/);
-  if (!match) return null;
-  const id = Number(match[1]);
-  return Number.isSafeInteger(id) && id >= 2147483648 && id <= 4294967295 ? match[1] : null;
+  const win = doc.defaultView || (typeof window !== 'undefined' ? window : null);
+  if (!win) return null;
+
+  // 1. Navigation & URL inspection
+  const href = win.location?.href ?? '';
+  const pathname = win.location?.pathname ?? '';
+  const hash = win.location?.hash ?? '';
+  const search = win.location?.search ?? '';
+
+  for (const src of [href, pathname, hash, search]) {
+    if (!src) continue;
+    const match =
+      src.match(/(?:app|apps|details|game|library)\/(\d+)(?:[/?#]|$)/i) ||
+      src.match(/[?&]appid=(\d+)/i) ||
+      src.match(/steam:\/\/nav\/games\/details\/(\d+)/i);
+    if (match) {
+      const id = Number(match[1]);
+      if (Number.isSafeInteger(id) && id >= 2147483648 && id <= 4294967295) {
+        return String(match[1]);
+      }
+    }
+  }
+
+  // 2. React Router / window.history state inspection
+  try {
+    const historyState = win.history?.state;
+    if (historyState) {
+      const stateStr = JSON.stringify(historyState);
+      const match =
+        stateStr.match(/\/app\/(\d+)/) ||
+        stateStr.match(/"appid":\s*"?(\d+)"?/) ||
+        stateStr.match(/"appId":\s*"?(\d+)"?/);
+      if (match) {
+        const id = Number(match[1]);
+        if (Number.isSafeInteger(id) && id >= 2147483648 && id <= 4294967295) {
+          return String(match[1]);
+        }
+      }
+    }
+  } catch {}
+
+  // 3. Steam AppDetails store
+  try {
+    const appDetailsStore = (win as any).appDetailsStore || (window as any).appDetailsStore;
+    const currentAppId = appDetailsStore?.m_currentAppId ?? appDetailsStore?.currentAppId;
+    if (currentAppId) {
+      const id = Number(currentAppId);
+      if (Number.isSafeInteger(id) && id >= 2147483648 && id <= 4294967295) {
+        return String(currentAppId);
+      }
+    }
+  } catch {}
+
+  // 4. Non-Steam notice / Game title + appStore.m_mapApps lookup
+  try {
+    const title = getPageGameTitle(doc);
+    if (title) {
+      const resolvedId = findShortcutAppIdByName(doc, title);
+      if (resolvedId) return resolvedId;
+    }
+  } catch {}
+
+  return null;
 }
 
 function startObserving(doc: Document): void {
   if (observed.has(doc)) return;
   observed.add(doc);
+  console.info('[AWNext Bridge][HOOK] Observing document for window:', doc.defaultView?.name || 'Main');
 
   let active = '';
   let lastRead = 0;
   let lastResult: AchievementResult | null = null;
-  let warnedPlacement = false;
   let placementRetries = 0;
-  const MAX_PLACEMENT_RETRIES = 20;
+  const MAX_PLACEMENT_RETRIES = 25;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const update = async () => {
     const id = shortcutId(doc);
-    console.info(
-      '[AWNext Bridge][SCAN] location',
-      doc.defaultView?.location?.href,
-      'shortcutId',
-      id,
-    );
     if (!id) {
-      removePanel(doc);
-      active = '';
-      lastResult = null;
-      warnedPlacement = false;
-      placementRetries = 0;
+      if (active) {
+        removePanel(doc);
+        console.info('[AWNext Bridge][UI] Panel removed for shortcut', active);
+        active = '';
+        lastResult = null;
+        placementRetries = 0;
+      }
       return;
     }
 
-    // If we have a cached result and placement is missing, keep retrying for
-    // a while — Steam's React may render the Notes region slightly late.
+    if (active !== id) {
+      console.info('[AWNext Bridge][MAPPING] AppID detectado:', id);
+    }
+
+    // Wait until placement is available (Notes region rendered in Steam React DOM)
     if (!hasPlacement(doc)) {
       placementRetries += 1;
-      if (!warnedPlacement || placementRetries % 5 === 0) {
-        console.warn(
-          '[AWNext Bridge][UI] Placement not ready (retry',
-          placementRetries + '/' + MAX_PLACEMENT_RETRIES + ') for',
-          id,
-        );
-        warnedPlacement = true;
-      }
       if (placementRetries < MAX_PLACEMENT_RETRIES) {
-        // Schedule a retry soon — the Notes region may still be rendering.
         if (!timer) {
           timer = setTimeout(() => {
             timer = undefined;
@@ -75,34 +125,38 @@ function startObserving(doc: Document): void {
       return;
     }
 
-    warnedPlacement = false;
     placementRetries = 0;
 
-    // Panel already placed for this app and data is fresh → just reconcile.
+    // Panel already placed for this app and data is fresh → reconcile or restore
     if (active === id && Date.now() - lastRead < 30000) {
       if (doc.getElementById(PANEL_ID)) {
         reconcilePlacement(doc);
       } else if (lastResult && !lastResult.notConfigured) {
-        placePanel(doc, lastResult);
+        const placement = placePanel(doc, lastResult);
+        if (placement) {
+          console.info('[AWNext Bridge][UI] Inserción del panel (' + placement + ') para', id);
+        }
       }
       return;
     }
 
-    // App changed → clear cached result.
+    // App changed → clear cached result
     if (active !== id) lastResult = null;
     active = id;
     lastRead = Date.now();
 
-    console.info('[AWNext Bridge][MAPPING] Reading local achievements for shortcut', id);
+    console.info('[AWNext Bridge][BACKEND] Invocando backend.get_achievements() para', id);
     let result: AchievementResult;
     try {
-      result = JSON.parse(await backend.get_achievements(id)) as AchievementResult;
+      const jsonStr = await backend.get_achievements(id);
+      result = JSON.parse(jsonStr) as AchievementResult;
+      console.info('[AWNext Bridge][BACKEND] Resultado RPC recibido para', id);
     } catch (error) {
-      console.error('[AWNext Bridge][BACKEND] RPC failed', error);
+      console.error('[AWNext Bridge][BACKEND] Resultado RPC fallido:', error);
       result = { stage: 'BACKEND', error: 'No se pudieron leer los logros locales de AWN.' };
     }
 
-    // Guard against stale responses when user navigated away.
+    // Guard against stale responses if user navigated away during RPC
     if (shortcutId(doc) !== id) return;
     lastResult = result;
 
@@ -111,37 +165,38 @@ function startObserving(doc: Document): void {
       return;
     }
 
-    if (result.error) {
-      console.warn(
-        `[AWNext Bridge][${result.stage || 'BACKEND'}] ${result.error}`,
-        result.configPath || result.statePath || result.schemaPath || '',
-      );
-    }
+    console.info(
+      '[AWNext Bridge][DATA] Número de logros: ' +
+        (result.unlocked ?? 0) +
+        '/' +
+        (result.total ?? 0) +
+        ' para ' +
+        id,
+    );
 
     const placement = placePanel(doc, result);
-    console.info('[AWNext Bridge][UI] Panel placement', placement || 'unavailable', 'for shortcut', id);
+    if (placement) {
+      console.info('[AWNext Bridge][UI] Inserción del panel (' + placement + ') para', id);
+    }
   };
 
   const observer = new MutationObserver(() => {
     if (timer) return;
     timer = setTimeout(() => {
       timer = undefined;
-      console.info('[AWNext Bridge][OBS] mutation → update');
       void update();
-    }, 200);
+    }, 250);
   });
 
   observer.observe(doc.body, { childList: true, subtree: true });
 
-  // Periodic refresh for data freshness (30 s).
+  // Periodic refresh for data freshness (30 s)
   doc.defaultView?.setInterval(() => {
     if (doc.body.isConnected) {
-      console.info('[AWNext Bridge][TIMER] interval');
       void update();
     }
   }, 30000);
 
-  console.info('[AWNext Bridge][HOOK] starting update');
   void update();
 }
 
@@ -151,30 +206,24 @@ function windowCreated(context: {
   m_strTitle?: string;
 }): void {
   const doc = context.window?.document;
-  console.info(
-    '[AWNext Bridge][HOOK] window created',
-    context.m_strName,
-    context.m_strTitle,
-    doc?.defaultView?.location?.href,
-  );
-
-  if (!doc) {
-    console.info('[AWNext Bridge][HOOK] skipped window without document', context.m_strName);
-    return;
-  }
-
-  // Accept the main Steam library window.
-  // GDL confirms the window name is "SP Desktop"; accept any window that
-  // either has that name OR has no name (the hook may deliver the main
-  // window on startup with an empty m_strName on some builds).
   const name = context.m_strName ?? '';
-  if (name && !name.includes('SP Desktop')) {
-    console.info('[AWNext Bridge][HOOK] skipped non-library window', name);
+
+  if (!doc) return;
+
+  // Filter out popups that are definitely not the library window
+  if (
+    name.includes('Login') ||
+    name.includes('Overlay') ||
+    name.includes('Friends') ||
+    name.includes('Chat') ||
+    name.includes('Menu')
+  ) {
     return;
   }
+
+  console.info('[AWNext Bridge][HOOK] Ventana detectada:', name || 'SP Desktop');
 
   if (!doc.body) {
-    console.info('[AWNext Bridge][HOOK] waiting for document body', name);
     const timer = doc.defaultView?.setInterval(() => {
       if (!doc.body) return;
       doc.defaultView?.clearInterval(timer);
@@ -189,7 +238,6 @@ function windowCreated(context: {
 function attachToCurrentWindow(): void {
   if (typeof window === 'undefined' || !window.document) return;
   const doc = window.document;
-  console.info('[AWNext Bridge][HOOK] checking current window', doc.defaultView?.location?.href);
   if (doc.body) {
     startObserving(doc);
     return;
@@ -202,14 +250,14 @@ function attachToCurrentWindow(): void {
 }
 
 export default definePlugin(() => {
+  console.info('[AWNext Bridge][HOOK] Inicialización de AWNext Steam Bridge');
   try {
     Millennium.AddWindowCreateHook?.(windowCreated);
-    console.info('[AWNext Bridge] Library window hook registered');
+    console.info('[AWNext Bridge][HOOK] Window create hook registrado en Millennium');
   } catch (error) {
-    console.error('[AWNext Bridge][HOOK] Could not register window hook', error);
+    console.error('[AWNext Bridge][HOOK] Error registrando window create hook:', error);
   }
 
-  // Also observe the current window in case it already exists when definePlugin runs.
   attachToCurrentWindow();
 
   return {
