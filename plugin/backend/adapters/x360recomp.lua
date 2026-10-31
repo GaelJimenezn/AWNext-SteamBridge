@@ -4,6 +4,7 @@ local fs = require("fs")
 local millennium = require("millennium")
 
 local file_reader = require("utils.file_reader")
+local asset_cache = require("utils.asset_cache")
 local base64 = require("utils.base64")
 local awn_schema = require("parsers.awn_schema")
 local parse_toml = require("parsers.toml")
@@ -17,14 +18,19 @@ local function icon_data(root, title_id, id, icon_map)
     if not image_id then
         return nil
     end
-    local path = fs.join(root, "icon_cache", "x360recomp", title_id, image_id .. ".png")
-    local data = read(path, true, true)
-    if data and #data <= 262144 and data:sub(1, 8) == "\137PNG\r\n\26\n" then
-        return "data:image/png;base64," .. base64(data)
-    end
-    return nil
-end
 
+    local path = fs.join(root, "icon_cache", "x360recomp", title_id, image_id .. ".png")
+
+    return asset_cache.get("icon:" .. path, 600, function()
+        local data = read(path, true, true)
+
+        if data and #data <= 262144 and data:sub(1, 8) == "\137PNG\r\n\26\n" then
+            return "data:image/png;base64," .. base64(data)
+        end
+
+        return nil
+    end, true)
+end
 local function get_achievements(shortcut_app_id)
     logger:info("[MAPPING] get_achievements called with: " .. tostring(shortcut_app_id))
     local id = safe_id(shortcut_app_id)
@@ -78,7 +84,10 @@ local function get_achievements(shortcut_app_id)
     local unlocked = parse_toml(content)
     local schema_path = fs.join(root, "steam_cache", "x360recomp", title_id .. ".json")
     logger:info("[DATA] schema_path=" .. schema_path)
-    local rows = schema_entries(read_json(schema_path))
+    local catalog = asset_cache.get("schema:" .. schema_path, 120, function()
+        return read_json(schema_path)
+    end)
+    local rows = schema_entries(catalog)
     if #rows == 0 then
         return json.encode({
             stage = "DATA",
