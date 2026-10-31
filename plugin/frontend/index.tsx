@@ -127,20 +127,20 @@ function startObserving(doc: Document): void {
 
     placementRetries = 0;
 
-    // Panel already placed for this app and data is fresh → reconcile or restore
+    // Panel already placed for this app and data is fresh â†’ reconcile or restore
     if (active === id && Date.now() - lastRead < 30000) {
       if (doc.getElementById(PANEL_ID)) {
         reconcilePlacement(doc);
       } else if (lastResult && !lastResult.notConfigured) {
         const placement = placePanel(doc, lastResult);
         if (placement) {
-          console.info('[AWNext Bridge][UI] Inserción del panel (' + placement + ') para', id);
+          console.info('[AWNext Bridge][UI] InserciÃ³n del panel (' + placement + ') para', id);
         }
       }
       return;
     }
 
-    // App changed → clear cached result
+    // App changed â†’ clear cached result
     if (active !== id) lastResult = null;
     active = id;
     lastRead = Date.now();
@@ -148,8 +148,19 @@ function startObserving(doc: Document): void {
     console.info('[AWNext Bridge][BACKEND] Invocando backend.get_achievements() para', id);
     let result: AchievementResult;
     try {
-      const jsonStr = await backend.get_achievements(id);
-      result = JSON.parse(jsonStr) as AchievementResult;
+      const response = await backend.get_achievements(id);
+
+      result = (
+        typeof response === 'string'
+          ? JSON.parse(response)
+          : response
+      ) as AchievementResult;
+
+      console.info(
+        '[AWNext Bridge][BACKEND] Respuesta normalizada:',
+        result?.total,
+        result?.unlocked
+      );
       console.info('[AWNext Bridge][BACKEND] Resultado RPC recibido para', id);
     } catch (error) {
       console.error('[AWNext Bridge][BACKEND] Resultado RPC fallido:', error);
@@ -166,7 +177,7 @@ function startObserving(doc: Document): void {
     }
 
     console.info(
-      '[AWNext Bridge][DATA] Número de logros: ' +
+      '[AWNext Bridge][DATA] NÃºmero de logros: ' +
         (result.unlocked ?? 0) +
         '/' +
         (result.total ?? 0) +
@@ -176,7 +187,7 @@ function startObserving(doc: Document): void {
 
     const placement = placePanel(doc, result);
     if (placement) {
-      console.info('[AWNext Bridge][UI] Inserción del panel (' + placement + ') para', id);
+      console.info('[AWNext Bridge][UI] InserciÃ³n del panel (' + placement + ') para', id);
     }
   };
 
@@ -250,7 +261,40 @@ function attachToCurrentWindow(): void {
 }
 
 export default definePlugin(() => {
-  console.info('[AWNext Bridge][HOOK] Inicialización de AWNext Steam Bridge');
+  void (async () => {
+    console.info('[AWN-DEBUG] Starting RPC diagnostic');
+
+    try {
+      const fn = (backend as any)?.bridge_ping;
+
+      if (typeof fn !== 'function') {
+        console.error('[AWN-DEBUG] RPC function unavailable');
+        return;
+      }
+
+      const response = await fn();
+
+      console.info('[AWN-DEBUG] RPC response type:', typeof response);
+      console.info('[AWN-DEBUG] RPC response JSON:', JSON.stringify(response));
+      console.info(
+        '[AWN-DEBUG] RPC response keys:',
+        response && typeof response === 'object'
+          ? Object.keys(response)
+          : 'not an object'
+      );
+
+      if (typeof response !== 'string') {
+        console.error('[AWN-DEBUG] Unexpected response type:', typeof response);
+        return;
+      }
+
+      const parsed = JSON.parse(response);
+      console.info('[AWN-DEBUG] RPC SUCCESS:', parsed);
+    } catch (error) {
+      console.error('[AWN-DEBUG] RPC FAILED:', error);
+    }
+  })();
+  console.info('[AWNext Bridge][HOOK] InicializaciÃ³n de AWNext Steam Bridge');
   try {
     Millennium.AddWindowCreateHook?.(windowCreated);
     console.info('[AWNext Bridge][HOOK] Window create hook registrado en Millennium');
@@ -262,7 +306,7 @@ export default definePlugin(() => {
 
   return {
     title: 'AWNext Steam Bridge',
-    icon: <span>★</span>,
+    icon: <span>â˜…</span>,
     content: (
       <div>
         Logros locales de AWN para accesos directos configurados en bridge-config.json.
@@ -270,3 +314,4 @@ export default definePlugin(() => {
     ),
   };
 });
+

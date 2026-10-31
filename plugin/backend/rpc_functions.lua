@@ -145,3 +145,14 @@ function get_achievements(shortcut_app_id)
     logger:info(string.format('[DATA] Read %d/%d achievements for shortcut %s', earned, #rows, id))
     return json.encode({ title = game.title or 'Forza Horizon', source = 'AWN local x360 recomp', total = #rows, unlocked = earned, achievements = rows })
 end
+
+---@ffi
+---@return string
+function bridge_ping()
+    logger:info('[AWN-DEBUG] bridge_ping executed')
+    return json.encode({
+        ok = true,
+        message = 'Lua RPC operational'
+    })
+end
+
