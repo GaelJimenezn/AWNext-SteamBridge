@@ -1,27 +1,7 @@
+import { make } from './shared/dom';
+import type { AchievementResult } from './models/achievement';
+export type { Achievement, AchievementResult } from './models/achievement';
 
-
-export type Achievement = {
-  id: string;
-  name: string;
-  description: string;
-  icon?: string;
-  unlocked: boolean;
-  unlockTime: number;
-};
-
-export type AchievementResult = {
-  title?: string;
-  source?: string;
-  total?: number;
-  unlocked?: number;
-  achievements?: Achievement[];
-  error?: string;
-  notConfigured?: boolean;
-  stage?: string;
-  configPath?: string;
-  statePath?: string;
-  schemaPath?: string;
-};
 
 export const PANEL_ID = 'awn-bridge-achievements';
 const WRAPPER_ATTR = 'data-awn-bridge-wrapper';
@@ -36,11 +16,7 @@ type Placement =
 // Adapted from the runtime class lookup technique in Game Data Linker
 // (MIT, copyright 2026 retrotoolsdev-wq). Full notice: resources/GDL-LICENSE.txt.
 // ---------------------------------------------------------------------------
-function make(doc: Document, tag: string, text?: string): HTMLElement {
-  const element = doc.createElement(tag);
-  if (text !== undefined) element.textContent = text;
-  return element;
-}
+
 
 function localized(doc: Document, token: string, fallback: string): string {
   try {
