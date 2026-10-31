@@ -2,10 +2,8 @@ import { make } from './shared/dom';
 import type { AchievementResult } from './models/achievement';
 export type { Achievement, AchievementResult } from './models/achievement';
 
-
 export const PANEL_ID = 'awn-bridge-achievements';
 const WRAPPER_ATTR = 'data-awn-bridge-wrapper';
-
 
 type Placement =
   | { kind: 'gdl'; container: Element }
@@ -17,15 +15,11 @@ type Placement =
 // (MIT, copyright 2026 retrotoolsdev-wq). Full notice: resources/GDL-LICENSE.txt.
 // ---------------------------------------------------------------------------
 
-
 function localized(doc: Document, token: string, fallback: string): string {
   try {
     const manager =
-      (doc.defaultView as any)?.LocalizationManager ??
-      (window as any)?.LocalizationManager;
-    const value =
-      manager?.m_mapTokens?.get?.(token) ??
-      manager?.m_mapFallbackTokens?.get?.(token);
+      (doc.defaultView as any)?.LocalizationManager ?? (window as any)?.LocalizationManager;
+    const value = manager?.m_mapTokens?.get?.(token) ?? manager?.m_mapFallbackTokens?.get?.(token);
     if (typeof value === 'string' && value.length > 0) return value;
   } catch {
     // LocalizationManager is not guaranteed in every Steam build.
@@ -132,8 +126,7 @@ export function findNonSteamNotice(doc: Document): { element: Element; title: st
 export function findShortcutAppIdByName(doc: Document, title: string): string | null {
   const normalized = title.trim().toLowerCase();
   if (!normalized) return null;
-  const appStore =
-    (doc.defaultView as any)?.appStore || (window as any)?.appStore;
+  const appStore = (doc.defaultView as any)?.appStore || (window as any)?.appStore;
   if (!appStore?.m_mapApps) return null;
   const SHORTCUT_THRESHOLD = 2147483648; // 2^31
 
@@ -230,20 +223,12 @@ function findNotesRegion(doc: Document): HTMLElement | null {
   }
 
   // 2. Structural fallback: [role="region"] or section matching notes/notas
-  const regions = Array.from(
-    doc.querySelectorAll('[role="region"], section'),
-  ) as HTMLElement[];
+  const regions = Array.from(doc.querySelectorAll('[role="region"], section')) as HTMLElement[];
   for (const region of regions) {
     if (isPlayArea(region)) continue;
-    const heading = region.querySelector(
-      'h2, [role="heading"], h3, div[class*="Title"]',
-    );
+    const heading = region.querySelector('h2, [role="heading"], h3, div[class*="Title"]');
     const text = (heading?.textContent || '').trim();
-    if (
-      /\b(notes|notas|notizen|note|anotações|anotacoes|grabaciones|recordings)\b/i.test(
-        text,
-      )
-    ) {
+    if (/\b(notes|notas|notizen|note|anotações|anotacoes|grabaciones|recordings)\b/i.test(text)) {
       return region;
     }
   }
@@ -313,8 +298,7 @@ function findSidebarColumn(
 function findPlacement(doc: Document): Placement | null {
   // 1. GDL container: prefer it when GDL is active to avoid duplicate panels.
   const gdlContent =
-    doc.getElementById('gdl-achievements-content') ||
-    doc.getElementById('gdl-epic-ach-content');
+    doc.getElementById('gdl-achievements-content') || doc.getElementById('gdl-epic-ach-content');
   if (gdlContent) return { kind: 'gdl', container: gdlContent };
 
   // 2. Sidebar placement: find NOTES region → sidebar column → insert next to NOTES.
@@ -341,7 +325,8 @@ function buildContents(doc: Document, result: AchievementResult): HTMLElement {
   const root = make(doc, 'div');
   root.id = PANEL_ID;
   root.setAttribute('data-achievement-source', 'awn-local');
-  root.style.cssText = 'color:#dcdedf;font:13px Arial,sans-serif;width:100%;min-width:0;box-sizing:border-box';
+  root.style.cssText =
+    'color:#dcdedf;font:13px Arial,sans-serif;width:100%;min-width:0;box-sizing:border-box';
 
   if (result.error) {
     const error = make(doc, 'p', result.error);
@@ -351,15 +336,16 @@ function buildContents(doc: Document, result: AchievementResult): HTMLElement {
   }
 
   const achievements = result.achievements || [];
-  const unlocked = achievements.filter(a => a.unlocked);
-  const locked = achievements.filter(a => !a.unlocked);
+  const unlocked = achievements.filter((a) => a.unlocked);
+  const locked = achievements.filter((a) => !a.unlocked);
 
   const total = result.total ?? achievements.length;
   const earned = result.unlocked ?? unlocked.length;
-  const percent = total ? Math.round(earned / total * 100) : 0;
+  const percent = total ? Math.round((earned / total) * 100) : 0;
 
   const header = make(doc, 'div');
-  header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px';
+  header.style.cssText =
+    'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px';
 
   const count = make(doc, 'strong', `${earned} de ${total}`);
   count.style.cssText = 'font-size:16px;color:#fff';
@@ -371,7 +357,8 @@ function buildContents(doc: Document, result: AchievementResult): HTMLElement {
   root.append(header);
 
   const bar = make(doc, 'div');
-  bar.style.cssText = 'height:6px;background:#344454;border-radius:4px;overflow:hidden;margin-bottom:12px';
+  bar.style.cssText =
+    'height:6px;background:#344454;border-radius:4px;overflow:hidden;margin-bottom:12px';
 
   const fill = make(doc, 'div');
   fill.style.cssText = `width:${percent}%;height:100%;background:#66c0f4`;
@@ -379,22 +366,15 @@ function buildContents(doc: Document, result: AchievementResult): HTMLElement {
   root.append(bar);
 
   // Steam-style compact preview: four latest unlocked achievements.
-  const recent = [...unlocked]
-    .sort((a, b) => b.unlockTime - a.unlockTime)
-    .slice(0, 4);
+  const recent = [...unlocked].sort((a, b) => b.unlockTime - a.unlockTime).slice(0, 4);
 
-  const previewTitle = make(
-    doc,
-    'div',
-    'LOGROS DESBLOQUEADOS RECIENTEMENTE'
-  );
+  const previewTitle = make(doc, 'div', 'LOGROS DESBLOQUEADOS RECIENTEMENTE');
   previewTitle.style.cssText =
     'font-size:10px;letter-spacing:0.7px;color:#8f98a0;margin:12px 0 8px';
   root.append(previewTitle);
 
   const preview = make(doc, 'div');
-  preview.style.cssText =
-    'display:flex;gap:7px;align-items:center;margin-bottom:12px';
+  preview.style.cssText = 'display:flex;gap:7px;align-items:center;margin-bottom:12px';
 
   for (const achievement of recent) {
     const slot = make(doc, 'div');
@@ -406,8 +386,7 @@ function buildContents(doc: Document, result: AchievementResult): HTMLElement {
       const image = doc.createElement('img');
       image.src = achievement.icon;
       image.alt = achievement.name;
-      image.style.cssText =
-        'width:100%;height:100%;object-fit:contain';
+      image.style.cssText = 'width:100%;height:100%;object-fit:contain';
       slot.append(image);
     } else {
       const fallback = make(doc, 'span', '★');
@@ -419,13 +398,8 @@ function buildContents(doc: Document, result: AchievementResult): HTMLElement {
   }
 
   if (unlocked.length > recent.length) {
-    const extra = make(
-      doc,
-      'span',
-      `+${unlocked.length - recent.length}`
-    );
-    extra.style.cssText =
-      'color:#8f98a0;font-size:12px;margin-left:3px';
+    const extra = make(doc, 'span', `+${unlocked.length - recent.length}`);
+    extra.style.cssText = 'color:#8f98a0;font-size:12px;margin-left:3px';
     preview.append(extra);
   }
 
@@ -435,14 +409,16 @@ function buildContents(doc: Document, result: AchievementResult): HTMLElement {
   section.style.cssText = 'width:100%;min-width:0';
 
   const summary = make(doc, 'summary', 'Ver mis logros');
-  summary.style.cssText = 'cursor:pointer;color:#c7d5e0;padding:10px 0;font-weight:600;border-top:1px solid #344454';
+  summary.style.cssText =
+    'cursor:pointer;color:#c7d5e0;padding:10px 0;font-weight:600;border-top:1px solid #344454';
   section.append(summary);
 
   const filters = make(doc, 'div');
   filters.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 12px';
 
   const list = make(doc, 'div');
-  list.style.cssText = 'display:flex;flex-direction:column;gap:8px;max-height:460px;overflow-y:auto;overflow-x:hidden';
+  list.style.cssText =
+    'display:flex;flex-direction:column;gap:8px;max-height:460px;overflow-y:auto;overflow-x:hidden';
 
   const cards: Array<{ element: HTMLElement; unlocked: boolean }> = [];
 
@@ -467,8 +443,7 @@ function buildContents(doc: Document, result: AchievementResult): HTMLElement {
       const image = doc.createElement('img');
       image.alt = achievement.name;
       image.src = achievement.icon;
-      image.style.cssText =
-        'width:48px;height:48px;object-fit:contain';
+      image.style.cssText = 'width:48px;height:48px;object-fit:contain';
 
       if (!achievement.unlocked) {
         image.style.filter = 'grayscale(1)';
@@ -513,10 +488,9 @@ function buildContents(doc: Document, result: AchievementResult): HTMLElement {
         ? achievement.unlockTime > 0
           ? new Date(achievement.unlockTime * 1000).toLocaleString()
           : 'Desbloqueado'
-        : 'Bloqueado'
+        : 'Bloqueado',
     );
-    status.style.cssText =
-      'font-size:11px;color:#66c0f4;margin-top:6px';
+    status.style.cssText = 'font-size:11px;color:#66c0f4;margin-top:6px';
 
     if (!achievement.unlocked) {
       status.style.color = '#737e88';
@@ -576,7 +550,7 @@ function buildContents(doc: Document, result: AchievementResult): HTMLElement {
 /**
  * Build a sidebar section that mirrors the NOTES region chrome.
  * Adapted from GDL's buildSidebarSection (MIT, see GDL-LICENSE.txt).
- */function buildSidebarSection(
+ */ function buildSidebarSection(
   doc: Document,
   anchorRegion: HTMLElement,
   sidebarColumn: HTMLElement,
@@ -598,7 +572,8 @@ function buildContents(doc: Document, result: AchievementResult): HTMLElement {
     region.append(h2);
   } else {
     const h2 = make(doc, 'h2', 'Logros locales');
-    h2.style.cssText = 'font-size:11px;font-weight:600;letter-spacing:1.5px;color:#8f98a0;margin:0 0 8px';
+    h2.style.cssText =
+      'font-size:11px;font-weight:600;letter-spacing:1.5px;color:#8f98a0;margin:0 0 8px';
     region.append(h2);
   }
 
@@ -629,10 +604,7 @@ export function hasPlacement(doc: Document): boolean {
   return findPlacement(doc) !== null;
 }
 
-export function placePanel(
-  doc: Document,
-  result: AchievementResult,
-): 'gdl' | 'sidebar' | null {
+export function placePanel(doc: Document, result: AchievementResult): 'gdl' | 'sidebar' | null {
   const placement = findPlacement(doc);
   if (!placement) {
     return null;

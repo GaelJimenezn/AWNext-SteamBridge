@@ -14,7 +14,6 @@ function bridge_ping()
     logger:info('[AWN-DEBUG] bridge_ping executed')
     return json.encode({
         ok = true,
-        message = 'Lua RPC operational'
+        message = 'Lua RPC operational',
     })
 end
-

@@ -85,7 +85,10 @@ function shortcutId(doc: Document): string | null {
 function startObserving(doc: Document): void {
   if (observed.has(doc)) return;
   observed.add(doc);
-  console.info('[AWNext Bridge][HOOK] Observing document for window:', doc.defaultView?.name || 'Main');
+  console.info(
+    '[AWNext Bridge][HOOK] Observing document for window:',
+    doc.defaultView?.name || 'Main',
+  );
 
   let active = '';
   let lastRead = 0;
@@ -151,15 +154,13 @@ function startObserving(doc: Document): void {
       const response = await backend.get_achievements(id);
 
       result = (
-        typeof response === 'string'
-          ? JSON.parse(response)
-          : response
+        typeof response === 'string' ? JSON.parse(response) : response
       ) as AchievementResult;
 
       console.info(
         '[AWNext Bridge][BACKEND] Respuesta normalizada:',
         result?.total,
-        result?.unlocked
+        result?.unlocked,
       );
       console.info('[AWNext Bridge][BACKEND] Resultado RPC recibido para', id);
     } catch (error) {
@@ -278,9 +279,7 @@ export default definePlugin(() => {
       console.info('[AWN-DEBUG] RPC response JSON:', JSON.stringify(response));
       console.info(
         '[AWN-DEBUG] RPC response keys:',
-        response && typeof response === 'object'
-          ? Object.keys(response)
-          : 'not an object'
+        response && typeof response === 'object' ? Object.keys(response) : 'not an object',
       );
 
       if (typeof response !== 'string') {
@@ -308,10 +307,7 @@ export default definePlugin(() => {
     title: 'AWNext Steam Bridge',
     icon: <span>â˜…</span>,
     content: (
-      <div>
-        Logros locales de AWN para accesos directos configurados en bridge-config.json.
-      </div>
+      <div>Logros locales de AWN para accesos directos configurados en bridge-config.json.</div>
     ),
   };
 });
-

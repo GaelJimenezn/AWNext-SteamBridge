@@ -8,5 +8,5 @@ local function get_achievements(shortcut_app_id)
 end
 
 return {
-    get_achievements = get_achievements
+    get_achievements = get_achievements,
 }
