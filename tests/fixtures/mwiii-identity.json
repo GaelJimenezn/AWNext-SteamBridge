@@ -1,0 +1,7 @@
+{
+  "shortcut": {"appid":"3531473258","name":"Call of Duty: Modern Warfare III","exe":"D:/Games/Call of Duty Modern Warfare III 2023/sp23/sp23-cod.exe","startDir":"D:/Games/Call of Duty Modern Warfare III 2023"},
+  "candidates": [
+    {"provider":"awn","id":"1959007243","source":"Xbox PC","name":"Call of Duty®: Modern Warfare® II","exe":"D:/Games/Call of Duty Modern Warfare III 2023/sp23/sp23-cod.exe","gameDir":"D:/Games/Call of Duty Modern Warfare III 2023"},
+    {"provider":"awn","id":"3595270","source":"GBE Fork","name":"Call of Duty®: Modern Warfare® III","exe":"D:/Games/Call of Duty Modern Warfare III 2023/sp23/sp23-cod.exe","gameDir":"D:/Games/Call of Duty Modern Warfare III 2023/sp23"}
+  ]
+}

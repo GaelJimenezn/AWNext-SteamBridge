@@ -1,33 +1,4 @@
 local json = require("json")
-local fs = require("fs")
-local cache = require("utils.asset_cache")
-local reader = require("utils.file_reader")
-local millennium = require("millennium")
-
-local function normalize(value)
-    if type(value) ~= "string" then return "" end
-    return value:lower():gsub("[Â®â„¢]", ""):gsub("[%p]", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-end
-
-local function load_snapshot()
-    local cfgpath = fs.join(millennium.steam_path(), "millennium", "plugins", "org.awnext.steambridge.config.json")
-    local config = reader.read_json(cfgpath)
-    local root = type(config) == "table" and config.awnDataRoot or nil
-    if type(root) ~= "string" or root == "" then root = os.getenv("AW_USER_DATA") end
-    if not root or root == "" then
-        local appdata = os.getenv("APPDATA")
-        if not appdata or appdata == "" then return nil end
-        root = fs.join(appdata, "Achievement Watcher Next")
-    end
-    local path = fs.join(root, "Cache", "library_snapshot", "library.json")
-    return cache.get("awn-snapshot:" .. path, 30, function()
-        local content = reader.read(path, false, true)
-        if not content or #content > 33554432 then return nil end
-        local ok, data = pcall(json.decode, content)
-        if ok and type(data) == "table" then return data end
-        return nil
-    end)
-end
 
 local function as_bool(value)
     return value == true or value == 1 or value == "1"
@@ -41,26 +12,7 @@ local function unlock_info(row)
     return time > 0, time
 end
 
-local function get_achievements(shortcut_id, game_title)
-    local title = normalize(game_title)
-    if title == "" or #title < 3 then return json.encode({ notConfigured = true }) end
-    local snapshot = load_snapshot()
-    if type(snapshot) ~= "table" or type(snapshot.games) ~= "table" then
-        return json.encode({ notConfigured = true })
-    end
-    local found = nil
-    local matches = 0
-    for _, game in ipairs(snapshot.games) do
-        if type(game) == "table" and game.steamOfficial ~= true then
-            local current = normalize(game.displayName or game.name)
-            local fallback = normalize(game.name)
-            if current == title or fallback == title then
-                matches = matches + 1
-                found = game
-            end
-        end
-    end
-    if matches ~= 1 or not found then return json.encode({ notConfigured = true }) end
+local function from_game(found, game_title)
     local ach = found.achievement
     if type(ach) ~= "table" or type(ach.list) ~= "table" then
         return json.encode({ notConfigured = true })
@@ -91,4 +43,4 @@ local function get_achievements(shortcut_id, game_title)
     })
 end
 
-return { get_achievements = get_achievements }
+return { from_game = from_game }

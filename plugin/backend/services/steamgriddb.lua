@@ -4,11 +4,13 @@ local utils = require("utils")
 local fs = require("fs")
 local millennium = require("millennium")
 
+local compatibility = require("services.product_compat")
+
 local M = {}
 local key = nil
 local allowed_images = {}
 
-local secret_dir = fs.join(os.getenv("APPDATA"), "AWNext-SteamBridge", "secrets")
+local secret_dir = fs.join(compatibility.data_dir(), "secrets")
 local secret_path = fs.join(secret_dir, "steamgriddb.bin")
 
 -- Windows DPAPI: encrypted for the current Windows user.
@@ -116,7 +118,7 @@ end
 local function load_key()
     if key then return key end
 
-    local file = io.open(secret_path, "rb")
+    local file = io.open(compatibility.secret_read_path(), "rb")
     if not file then return nil end
 
     local encrypted = file:read("*a")
@@ -193,13 +195,16 @@ function M.status()
     return response({
         ok = true,
         configured = load_key() ~= nil,
-        persistent = fs.is_file(secret_path)
+        persistent = fs.is_file(compatibility.secret_read_path())
     })
 end
 
 function M.disconnect()
     key = nil
     allowed_images = {}
+    if not fs.is_file(secret_path) and fs.is_file(compatibility.secret_read_path()) then
+        return response({ ok = false, error = "Migrate legacy credentials before disconnecting; legacy data is read-only" })
+    end
     fs.remove(secret_path)
     return response({ ok = true, configured = false })
 end
@@ -241,7 +246,7 @@ function M.artwork(game_id, kind)
     return response(result)
 end
 
--- AWN_ACTIVE_ACCOUNT_V1
+-- LC_ACTIVE_ACCOUNT_V1
 -- SteamID64 modulo 2^32 is the local userdata account ID.
 local function userdata_id(steamid)
     local remainder = 0
@@ -379,7 +384,7 @@ function M.apply(appid, account, kind, url)
         return response({ ok = false, error = "Steam profile not found" })
     end
 
-    -- AWN_SGDB_BINARY_CURL_V1
+    -- LC_SGDB_BINARY_CURL_V1
     -- Download binary data directly to a temporary file.
     -- The requested URL must already belong to a SteamGridDB API result.
 
@@ -414,7 +419,7 @@ function M.apply(appid, account, kind, url)
         '--max-time 40 --max-filesize 20971520 --output "' ..
         temp .. '" "' .. url .. '"'
 
-    -- AWN_SILENT_DOWNLOAD_V1
+    -- LC_SILENT_DOWNLOAD_V1
     -- Millennium executes the command without stealing Steam focus.
     local output, executed = utils.exec(command)
 
@@ -474,7 +479,7 @@ function M.apply(appid, account, kind, url)
     end
 
     local backup_dir = fs.join(
-        os.getenv("APPDATA"), "AWNext-SteamBridge", "artwork-backups",
+        compatibility.data_dir(), "artwork-backups",
         tostring(os.time()) .. "_" .. stem
     )
 
@@ -500,7 +505,7 @@ function M.apply(appid, account, kind, url)
     end
 
     local target = fs.join(grid, stem .. extension)
-    local temporary = target .. ".awnnext.tmp"
+    local temporary = target .. ".library-customizer.tmp"
 
     local file = io.open(temporary, "wb")
     if not file then
@@ -535,7 +540,7 @@ function M.apply(appid, account, kind, url)
 end
 
 
--- AWN_NATIVE_IMAGE_V1
+-- LC_NATIVE_IMAGE_V1
 -- Returns validated binary artwork as Base64 for SteamClient.
 -- Does not modify userdata or require a Steam restart.
 function M.native_image(url)

@@ -97,3 +97,74 @@ end
 function sgdb_native_image(url)
     return require("services.steamgriddb").native_image(url)
 end
+
+local identity_service = require("services.identity_service")
+local function identity_request(method, payload)
+    if type(payload) ~= "string" or #payload > 1048576 then return json.encode({ok=false,error="Invalid identity payload"}) end
+    local ok, request = pcall(json.decode, payload)
+    if not ok then return json.encode({ok=false,error="Invalid identity JSON"}) end
+    local ran, result = pcall(identity_service[method], request)
+    return json.encode(ran and result or {ok=false,error="Identity operation failed: " .. tostring(result)})
+end
+
+---@ffi
+---@param payload string
+---@return string
+function get_identity_library(payload)
+    return identity_request("library", payload)
+end
+
+---@ffi
+---@param payload string
+---@return string
+function save_game_identity(payload)
+    return identity_request("save", payload)
+end
+
+---@ffi
+---@param payload string
+---@return string
+function recover_identity_config(payload)
+    return identity_request("recover", payload)
+end
+
+---@ffi
+---@param payload string
+---@return string
+function resolve_identity_provider(payload)
+    return identity_request("provider", payload)
+end
+
+---@ffi
+---@return string
+function get_installation_status()
+    return json.encode(require("services.installation_status").status())
+end
+
+-- Universal Library Discovery: read-only RPC; provider IDs are an allowlist.
+---@ffi
+---@return string
+function get_discovery_library()
+    local ok,result=pcall(require("services.discovery.library").snapshot)
+    return json.encode(ok and result or {ok=false,error="Discovery snapshot unavailable"})
+end
+
+---@ffi
+---@param provider string
+---@return string
+function refresh_discovery_provider(provider)
+    local ok,result=pcall(require("services.discovery.library").refresh,provider)
+    return json.encode(ok and result or {ok=false,error="Provider refresh failed"})
+end
+
+-- Transient simulation only. No journal save or Steam mutation is exposed.
+---@ffi
+---@param payload string
+---@return string
+function simulate_shortcut_import(payload)
+    if type(payload)~="string" or #payload>65536 then return json.encode({ok=false,error="Invalid simulation payload"}) end
+    local decoded,request=pcall(json.decode,payload)
+    if not decoded then return json.encode({ok=false,error="Invalid simulation JSON"}) end
+    local ok,result=pcall(require("services.shortcuts.manager").simulate,request)
+    return json.encode(ok and result or {ok=false,error="Shortcut simulation failed"})
+end

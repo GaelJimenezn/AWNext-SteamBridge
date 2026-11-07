@@ -1,9 +1,9 @@
 [plugin]
-id = "org.awnext.steambridge"
-name = "AWNext Steam Bridge"
+id = "library-customizer"
+name = "Library Customizer"
 version = "0.1.0"
-author = "AWNext Steam Bridge contributors"
-description = "Local AWN achievements for non-Steam library shortcuts."
+author = "Library Customizer contributors"
+description = "Steam library customization, artwork and local achievement integration."
 
 [assets]
 # reference resources to be included inside the plugin at compile time
@@ -45,21 +45,22 @@ entry = "webview/preload.ts"
 # output path
 # auto = automatically detect Millennium installation and install plugin
 # any other path = used as the output path for the build
-output_path = "dist"
+output_path = "../artifacts/library-customizer"
 
 [dev]
+socket = "library-customizer-offline-build.sock"
 # plugin_name = "com.example.boilerplate"     # defaults to [plugin].id
 # socket = "/tmp/millennium-mep.sock"         # defaults to platform MEP path
 
 # Restart the plugin backend on any source change (default: true).
-auto_restart = true
+auto_restart = false
 
 # Reload Steam's UI frontend after a restart, depending on which files changed:
 #   "never"    = never reload the UI (default)
 #   "backend"  = reload when .lua files changed
 #   "frontend" = reload when .ts/.tsx/.js/.jsx/.css files changed
 #   "both"     = reload on any source change
-reload_steamui_when = "both"
+reload_steamui_when = "never"
 
 [inspect]
 depth = 4

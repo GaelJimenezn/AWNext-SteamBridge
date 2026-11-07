@@ -11,53 +11,13 @@ import { make } from './shared/dom';
 import type { AchievementResult } from './models/achievement';
 export type { Achievement, AchievementResult } from './models/achievement';
 
-const WRAPPER_ATTR = 'data-awn-bridge-wrapper';
-
-// ---------------------------------------------------------------------------
-// CSS class resolution
-// Adapted from the runtime class lookup technique in Game Data Linker
-// (MIT, copyright 2026 retrotoolsdev-wq). Full notice: resources/GDL-LICENSE.txt.
-// ---------------------------------------------------------------------------
-
-/**
- * Check whether an element is part of or contains the play controls bar
- * (JUGAR button, Última sesión, Tiempo de juego / Playtime).
- */
-
-/**
- * Locate the non-Steam shortcut explanation notice in the content area and extract the game title.
- */
-
-/**
- * Lookup shortcut AppID by game display name in Steam's native appStore.m_mapApps.
- */
-
-/**
- * Extract active game title from the page notice or header.
- */
-
-// ---------------------------------------------------------------------------
-// Placement strategy
-// ---------------------------------------------------------------------------
-
-/**
- * Find the NOTES region (role="region" containing "Notes"/"Notas"/etc.)
- * Robust against Spanish UI («NOTAS») and structural variations.
- */
-
-/**
- * Derive the sidebar column by using LCA with the notice element or walking up
- * to the two-column row. Validates that the play area is never selected.
- */
-
-// ---------------------------------------------------------------------------
-// Panel content builders
-// ---------------------------------------------------------------------------
+const WRAPPER_ATTR = 'data-library-customizer-wrapper';
 
 /**
  * Build a sidebar section that mirrors the NOTES region chrome.
  * Adapted from GDL's buildSidebarSection (MIT, see GDL-LICENSE.txt).
- */ function buildSidebarSection(
+ */
+function buildSidebarSection(
   doc: Document,
   anchorRegion: HTMLElement,
   sidebarColumn: HTMLElement,

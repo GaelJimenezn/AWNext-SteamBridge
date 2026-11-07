@@ -10,3 +10,7 @@ plugin/bridge-config.json
 /plugin/bridge-config.json
 
 /plugin/dist/
+
+.phase0/
+artifacts/
+__pycache__/

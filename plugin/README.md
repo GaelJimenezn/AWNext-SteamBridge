@@ -1,26 +1,61 @@
-# AWNext Steam Bridge (MVP)
+# Library Customizer — Alpha 0.1.0, Fase 2
 
-Panel local de logros de AWN para accesos directos externos. El primer adaptador lee los archivos TOML de recompilaciones Xbox 360, incluida Forza Horizon mediante Pinyon Shift.
+Plugin Millennium con backend Lua y frontend React/TypeScript. Conserva el administrador actual, personalización SteamGridDB, lector snapshot AWN y asociaciones manuales de ports/x360recomp.
 
-## Prerequisites
+## Preparar y verificar
 
-- **[Millennium](https://github.com/SteamClientHomebrew/Millennium)** >= v3.4.0
-- **[Bun](https://bun.com/)** >= v1.0.0
+Desde la raíz del checkout, con Node.js, Bun, Python 3 y Windows:
 
-## Compilación
-
-```bash
-$ bun install
-$ bun run build
+```powershell
+# Dependencias de desarrollo; prepare genera los tipos Millennium.
+bun install --cwd plugin
+python -m pip install --target .phase0/python -r tests/requirements.txt
+node plugin/node_modules/typescript/bin/tsc --noEmit -p plugin/frontend/tsconfig.json
+python tests/test_identity.py
+node scripts/build-local.mjs
+python tests/test_discovery.py
+node --test tests/phase0.test.mjs tests/identity-client.test.mjs tests/discovery-client.test.mjs
+node scripts/verify-build.mjs
 ```
 
-El resultado es el archivo `dist` de Starlight: `starlight inspect dist` confirma que es un paquete `.star` con backend, frontend, webview y recursos. La instalación local lo copia como `org.awnext.steambridge.star`; `dist` por sí solo no incluye la configuración de rutas del equipo.
+`node --test` requiere el paquete local construido para probar instalación/desinstalación en carpetas temporales. Las pruebas Lua usan LuaJIT 2.1 de Lupa; no requieren Steam ni red, excepto la descarga inicial de dependencias. La prueba DPAPI es Windows y usa exclusivamente una clave sintética. El comando de comprobación de datos reales `node scripts/verify-local.mjs` es opcional: depende del mapping privado y de references/awn; no sustituye las pruebas Lua.
 
-## Prueba en Steam
+El build produce `artifacts/library-customizer/library-customizer.star` y un manifiesto con commit, estado Git, hash de fuentes, funciones/dependencias y hash de paquete. Se usa release, salida local y un canal de desarrollo aislado; no se instala ni activa el plugin. El paquete aún no está firmado. `plugin/dist` es un artefacto histórico preexistente y no se sobrescribe.
 
-1. Consulta `docs/LOCAL_TEST.md` para las comprobaciones y comandos exactos. El script `scripts/install-local.ps1` muestra una vista previa y sólo copia archivos al usar `-Apply`.
-2. `plugin/bridge-config.json` es la configuración local ignorada por Git. El instalador la copia como `org.awnext.steambridge.config.json` al directorio de plugins. Contiene el AppID del acceso directo, `awnDataRoot`, `stateRoot`, perfil y un mapa opcional `iconMap` del ID de logro al ID de imagen SPA.
-3. Abre el acceso directo de Forza Horizon. AWN debe haber creado `steam_cache/x360recomp/4D5309C9.json` y el directorio `icon_cache/x360recomp/4D5309C9/`.
-4. Revisa la consola del frontend: `[MAPPING]` identifica el acceso directo, `[BACKEND]` indica un fallo RPC, `[DATA]` indica archivos AWN ausentes y `[UI]` indica el punto de inserción. El backend registra `Read N/M achievements`.
+## Configuración y migración
 
-Si GDL está instalado, los logros locales de AWN aparecen dentro de su sección de logros con una etiqueta de origen propia; no se crea una segunda sección. Sin GDL, se crea una sección que sigue la estructura de NOTES. El lector sólo abre archivos locales en modo lectura, sin acceder a tokens de Steam o Xbox. La técnica visual adaptada de GDL conserva su licencia MIT en `resources/GDL-LICENSE.txt`. Hace falta probar el anclaje y la carga en una sesión real de Steam y Millennium.
+El ejemplo público es `plugin/library-customizer.config.example.json`. Completar rutas y asociaciones reales antes de copiarlo manualmente a `<Steam>/millennium/plugins/library-customizer.config.json`. No copiar el placeholder del ejemplo como si fuera un AppID válido.
+
+Se sigue leyendo `org.awnext.steambridge.config.json` si el archivo nuevo no existe. `plugin/bridge-config.json` permanece como archivo privado de desarrollo, ignorado por Git; no se renombra ni modifica automáticamente.
+
+Consultar [NAME-MIGRATION](../docs/NAME-MIGRATION.md) antes de instalar. Los scripts muestran previsión salvo `-Apply`, rechazan sobrescrituras diferentes y nunca borran la versión anterior. Instalador y desinstalador requieren un estado de activación legible; el instalador bloquea `org.awnext.steambridge` habilitado. No alteran plugins de AWN/GDL ni enabledPlugins.
+
+```powershell
+& ./scripts/migrate-local.ps1 -SteamRoot '<Steam>'
+& ./scripts/install-local.ps1 -SteamRoot '<Steam>'
+& ./scripts/uninstall-local.ps1 -SteamRoot '<Steam>'
+```
+
+Estos comandos no se han aplicado a la instalación personal durante Fase 0.
+
+## Identidad y persistencia
+
+Games permite editar referencias independientes de AWN, Steam catálogo, SteamGridDB y otros proveedores. El motor Lua único sirve al administrador, al lector de datos y a las consultas de artwork. Ver [contrato de Fase 1](../docs/PHASE1-IDENTITY.md).
+
+El primer guardado migra a schemaVersion 1 con respaldo, conserva games/iconMap y escribe exclusivamente library-customizer.config.json. Las modificaciones son por cuenta y shortcut. La carga no migra archivos automáticamente.
+
+Antes de cambiar activación o instalar, seguir [validación de instalación](../docs/INSTALLATION-VALIDATION.md). Esta fase no instala el paquete ni modifica datos personales.
+
+## Universal Library Discovery
+
+Discovery muestra proveedores de metadatos locales con refresco individual, evidencia y estados desconocidos explícitos. Ver [cobertura por launcher](../docs/UNIVERSAL-DISCOVERY.md). PC Game Pass no infiere derechos; Epic/Ubisoft no exponen aquí toda la biblioteca no instalada. No requiere login ni consulta credenciales, no importa accesos y no crea colecciones.
+
+Dependencias locales adicionales: Windows PowerShell 5.1 y winsqlite3.dll (solo para metadatos GOG). La comprobación opcional `python scripts/verify-discovery-local.py` enumera metadatos reales fuera de Steam, sin validar la integración dentro del cliente.
+
+## Fase 3A: Import Preview
+
+Previsualización local de instalaciones, identidad, posibles duplicados y colecciones sugeridas. Selección temporal individual o por lote, sin escrituras ni ejecución de juegos. [Validación Steam y APIs de 3B/3C](../docs/STEAM-IMPORT-VALIDATION.md). Integración runtime pendiente; no instalar ni activar automáticamente.
+
+## Integración y 3B simulada
+
+[Validación guiada](../docs/INTEGRATION-RUNBOOK.md) y [Steam Shortcut Manager](../docs/SHORTCUT-MANAGER.md). En Import Preview puedes simular propuestas sin guardar ni importar. Integration comprueba RPC/presencia de APIs sin ejecutarlas. La entrega se organiza en artifacts/library-customizer; ninguna instalación automática.

@@ -1,7 +1,7 @@
 local logger = require("logger")
 local json = require("json")
 local fs = require("fs")
-local millennium = require("millennium")
+local compatibility = require("services.product_compat")
 
 local file_reader = require("utils.file_reader")
 local asset_cache = require("utils.asset_cache")
@@ -31,15 +31,15 @@ local function icon_data(root, title_id, id, icon_map)
         return nil
     end, true)
 end
-local function get_achievements(shortcut_app_id)
+local function get_achievements(shortcut_app_id, mapped_game, supplied_config)
     logger:info("[MAPPING] get_achievements called with: " .. tostring(shortcut_app_id))
     local id = safe_id(shortcut_app_id)
     if not id then
         return json.encode({ stage = "MAPPING", error = "Invalid shortcut AppID" })
     end
-    local config_path = fs.join(millennium.steam_path(), "millennium", "plugins", "org.awnext.steambridge.config.json")
+    local config_path = compatibility.config_path()
     logger:info("[MAPPING] Config path: " .. config_path)
-    local config = read_json(config_path)
+    local config = supplied_config or read_json(config_path)
     if not config or type(config.games) ~= "table" then
         return json.encode({
             stage = "MAPPING",
@@ -47,7 +47,7 @@ local function get_achievements(shortcut_app_id)
             configPath = config_path,
         })
     end
-    local game = config.games[id]
+    local game = mapped_game or config.games[id]
     if type(game) ~= "table" then
         logger:warn("[MAPPING] No config for game " .. id)
         return json.encode({ notConfigured = true })

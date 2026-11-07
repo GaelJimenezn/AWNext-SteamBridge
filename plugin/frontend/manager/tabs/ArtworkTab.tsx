@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getSteamLibraryGames } from '../../core/steam-shortcuts';
+import { resolveProvider, subscribeIdentityChanges } from '../../core/identity-service';
 
 type Kind = 'portrait' | 'landscape' | 'hero' | 'logo' | 'icon';
 type Game = { id: number; name: string };
@@ -42,6 +43,11 @@ export function ArtworkTab() {
   const [applying, setApplying] = useState(false);
   const [message, setMessage] = useState('');
   const seq = useRef(0);
+  useEffect(() => subscribeIdentityChanges(() => {
+    seq.current++;
+    setMatched(null); setChosen(null); setImages([]); setMatches([]); setLoading(false);
+    setMessage('Las asociaciones cambiaron. Vuelve a seleccionar el juego para actualizar artwork.');
+  }), []);
 
   const game = games.find(g => g.appid === selected);
   const types: { id: Kind; label: string }[] = [
@@ -130,8 +136,16 @@ export function ArtworkTab() {
         return;
       }
 
-      setMatched(found[0].id);
-      await load(found[0].id, kind, requestId);
+      const identity = await resolveProvider(id, game.name, 'steamgriddb', found);
+      if (requestId !== seq.current) return;
+      if (!identity.selected) {
+        setShowMatches(true);
+        setMessage('Identidad ambigua o incompatible. Elige el juego correcto; no se seleccionó el primer resultado.');
+        setLoading(false);
+        return;
+      }
+      setMatched(Number(identity.selected.id));
+      await load(Number(identity.selected.id), kind, requestId);
     } catch (error) {
       if (requestId === seq.current) {
         setMessage(String(error));
@@ -248,7 +262,7 @@ export function ArtworkTab() {
         ))}
       </div>
 
-      {game && matched !== null && (
+      {game && matches.length > 0 && (
         <div style={{ padding: 10, background: '#1b3548',
           display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
           <span>Coincidencia: {matches.find(m => m.id === matched)?.name}</span>
@@ -256,9 +270,10 @@ export function ArtworkTab() {
             Cambiar coincidencia
           </button>
           {showMatches && (
-            <select aria-label="Coincidencia" value={matched}
+            <select aria-label="Coincidencia" value={matched ?? ''}
               onChange={e => selectMatch(Number(e.target.value))}
               style={{ padding: 8, background: '#102638', color: '#fff' }}>
+              <option value="" disabled>Selecciona una coincidencia</option>
               {matches.map(m => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
@@ -305,7 +320,7 @@ export function ArtworkTab() {
             </p>
           )}
 
-                    {/* AWN_PROFILE_SELECTOR_V2 */}
+                    {/* LC_PROFILE_SELECTOR_V2 */}
           <label
             htmlFor="steam-profile"
             style={{

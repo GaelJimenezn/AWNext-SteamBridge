@@ -35,7 +35,7 @@ export function captureSteamShortcuts(doc: Document): void {
       cached = [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
     }
   } catch (err) {
-    console.warn('[AWNext Bridge] Steam shortcut discovery failed', err);
+    console.warn('[Library Customizer] Steam shortcut discovery failed', err);
   }
 }
 

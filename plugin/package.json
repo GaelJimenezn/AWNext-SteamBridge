@@ -1,9 +1,13 @@
 {
+  "name": "library-customizer",
+  "version": "0.1.0",
+  "private": true,
   "scripts": {
     "dev": "./node_modules/.bin/starlight watch",
-    "build": "./node_modules/.bin/starlight pack",
+    "build": "node ../scripts/build-local.mjs",
     "typecheck": "tsc --noEmit -p frontend/tsconfig.json",
-    "prepare": "./node_modules/.bin/starlight lsp"
+    "prepare": "./node_modules/.bin/starlight lsp",
+    "test": "python ../tests/test_identity.py && python ../tests/test_discovery.py && python ../tests/test_shortcuts.py && node --test ../tests/phase0.test.mjs ../tests/identity-client.test.mjs ../tests/discovery-client.test.mjs ../tests/import-preview.test.mjs ../tests/shortcuts-client.test.mjs"
   },
   "devDependencies": {
     "@steambrew/starlight": "^1.1.3",

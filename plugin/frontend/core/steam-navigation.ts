@@ -106,6 +106,7 @@ export function findShortcutAppIdByName(doc: Document, title: string): string | 
   if (!appStore?.m_mapApps) return null;
   const SHORTCUT_THRESHOLD = 2147483648; // 2^31
 
+  const matches: string[] = [];
   for (const [id, app] of appStore.m_mapApps) {
     const numId = Number(id);
     if (!Number.isSafeInteger(numId) || numId < SHORTCUT_THRESHOLD || numId > 4294967295) {
@@ -115,10 +116,10 @@ export function findShortcutAppIdByName(doc: Document, title: string): string | 
       .trim()
       .toLowerCase();
     if (name && name === normalized) {
-      return String(id);
+      matches.push(String(id));
     }
   }
-  return null;
+  return matches.length === 1 ? matches[0] : null;
 }
 
 export function getPageGameTitle(doc: Document): string | null {

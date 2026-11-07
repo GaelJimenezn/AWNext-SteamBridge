@@ -4,7 +4,7 @@ import { buildAchievementSummary } from './achievement-summary';
 import { buildAchievementList } from './achievement-list';
 import { achievementStyles } from './achievement-styles';
 
-export const PANEL_ID = 'awn-bridge-achievements';
+export const PANEL_ID = 'library-customizer-achievements';
 
 /** Coordinate the local achievement components for Steam. */
 export function buildContents(doc: Document, result: AchievementResult): HTMLElement {

@@ -1,0 +1,76 @@
+{
+  "epic": {
+    "AppName": "alpha",
+    "CatalogNamespace": "store",
+    "CatalogItemId": "game-1",
+    "DisplayName": "Shared Game",
+    "bIsApplication": true,
+    "InstallLocation": "C:/Games/Epic",
+    "LaunchExecutable": "game.exe",
+    "bIsIncompleteInstall": false
+  },
+  "ubisoft": {
+    "records": [
+      {
+        "id": "10",
+        "name": "Shared Game",
+        "nameResolved": true,
+        "path": "C:/Games/Ubisoft",
+        "source": "fixture install registry"
+      },
+      {
+        "id": "11",
+        "name": "MWII",
+        "nameResolved": true,
+        "path": "C:/Games/Other",
+        "source": "fixture install registry"
+      }
+    ],
+    "errors": []
+  },
+  "xbox": {
+    "records": [
+      {
+        "id": "Publisher.Game_abcd",
+        "name": "Shared Game",
+        "nameResolved": true,
+        "path": "C:/Games/Xbox",
+        "aumid": "Publisher.Game_abcd!Game",
+        "storeId": "9ABC",
+        "source": "fixture MicrosoftGame.config"
+      }
+    ],
+    "errors": []
+  },
+  "gog": {
+    "records": [
+      {
+        "id": "100",
+        "name": "Shared Game",
+        "path": "C:/Games/GOG",
+        "source": "fixture GOG registry"
+      }
+    ],
+    "errors": []
+  },
+  "titles": [
+    {
+      "id": "100",
+      "name": "Shared Game"
+    },
+    {
+      "id": "200",
+      "name": "Cached Uninstalled Candidate"
+    }
+  ],
+  "installs": [
+    {
+      "id": "100",
+      "path": "C:/Games/GOG"
+    },
+    {
+      "id": "100",
+      "path": "D:/Games/GOG"
+    }
+  ]
+}

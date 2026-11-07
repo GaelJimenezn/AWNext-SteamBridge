@@ -1,5 +1,6 @@
 import { captureSteamShortcuts } from './core/steam-shortcuts';
 import { Manager } from './manager/Manager';
+import { identityEpoch, subscribeIdentityChanges, identityRpc, type InstallationStatus } from './core/identity-service';
 import { definePlugin, Millennium } from 'millennium';
 import {
   AchievementResult,
@@ -88,7 +89,7 @@ function startObserving(doc: Document): void {
   if (observed.has(doc)) return;
   observed.add(doc);
   console.info(
-    '[AWNext Bridge][HOOK] Observing document for window:',
+    '[Library Customizer][HOOK] Observing document for window:',
     doc.defaultView?.name || 'Main',
   );
 
@@ -96,17 +97,25 @@ function startObserving(doc: Document): void {
   let active = '';
   let lastRead = 0;
   let lastResult: AchievementResult | null = null;
+  let lastIdentityEpoch = identityEpoch();
   let placementRetries = 0;
   const MAX_PLACEMENT_RETRIES = 25;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const update = async () => {
+    const requestEpoch = identityEpoch();
+    if (lastIdentityEpoch !== requestEpoch) {
+      lastRead = 0;
+      lastResult = null;
+      removePanel(doc);
+      lastIdentityEpoch = requestEpoch;
+    }
     captureSteamShortcuts(doc);
     const id = shortcutId(doc);
     if (!id) {
       if (active) {
         removePanel(doc);
-        console.info('[AWNext Bridge][UI] Panel removed for shortcut', active);
+        console.info('[Library Customizer][UI] Panel removed for shortcut', active);
         active = '';
         lastResult = null;
         placementRetries = 0;
@@ -115,7 +124,7 @@ function startObserving(doc: Document): void {
     }
 
     if (active !== id) {
-      console.info('[AWNext Bridge][MAPPING] AppID detectado:', id);
+      console.info('[Library Customizer][MAPPING] AppID detectado:', id);
     }
 
     // Wait until placement is available (Notes region rendered in Steam React DOM)
@@ -141,7 +150,7 @@ function startObserving(doc: Document): void {
       } else if (lastResult && !lastResult.notConfigured) {
         const placement = placePanel(doc, lastResult);
         if (placement) {
-          console.info('[AWNext Bridge][UI] InserciÃ³n del panel (' + placement + ') para', id);
+          console.info('[Library Customizer][UI] InserciÃ³n del panel (' + placement + ') para', id);
         }
       }
       return;
@@ -152,7 +161,7 @@ function startObserving(doc: Document): void {
     active = id;
     lastRead = Date.now();
 
-    console.info('[AWNext Bridge][BACKEND] Invocando backend.get_achievements() para', id);
+    console.info('[Library Customizer][BACKEND] Invocando backend.get_achievements() para', id);
     let result: AchievementResult;
     try {
       const response = await (backend as any).get_achievements(id, getPageGameTitle(doc) ?? "");
@@ -162,18 +171,18 @@ function startObserving(doc: Document): void {
       ) as AchievementResult;
 
       console.info(
-        '[AWNext Bridge][BACKEND] Respuesta normalizada:',
+        '[Library Customizer][BACKEND] Respuesta normalizada:',
         result?.total,
         result?.unlocked,
       );
-      console.info('[AWNext Bridge][BACKEND] Resultado RPC recibido para', id);
+      console.info('[Library Customizer][BACKEND] Resultado RPC recibido para', id);
     } catch (error) {
-      console.error('[AWNext Bridge][BACKEND] Resultado RPC fallido:', error);
+      console.error('[Library Customizer][BACKEND] Resultado RPC fallido:', error);
       result = { stage: 'BACKEND', error: 'No se pudieron leer los logros locales de AWN.' };
     }
 
     // Guard against stale responses if user navigated away during RPC
-    if (shortcutId(doc) !== id) return;
+    if (shortcutId(doc) !== id || identityEpoch() !== requestEpoch) return;
     lastResult = result;
 
     if (result.notConfigured) {
@@ -182,7 +191,7 @@ function startObserving(doc: Document): void {
     }
 
     console.info(
-      '[AWNext Bridge][DATA] NÃºmero de logros: ' +
+      '[Library Customizer][DATA] NÃºmero de logros: ' +
         (result.unlocked ?? 0) +
         '/' +
         (result.total ?? 0) +
@@ -192,7 +201,7 @@ function startObserving(doc: Document): void {
 
     const placement = placePanel(doc, result);
     if (placement) {
-      console.info('[AWNext Bridge][UI] InserciÃ³n del panel (' + placement + ') para', id);
+      console.info('[Library Customizer][UI] InserciÃ³n del panel (' + placement + ') para', id);
     }
   };
 
@@ -205,6 +214,8 @@ function startObserving(doc: Document): void {
   });
 
   observer.observe(doc.body, { childList: true, subtree: true });
+  const unsubscribe = subscribeIdentityChanges(() => { if (doc.body.isConnected) void update(); });
+  doc.defaultView?.addEventListener('unload', unsubscribe, { once: true });
 
   // Periodic refresh for data freshness (30 s)
   doc.defaultView?.setInterval(() => {
@@ -231,7 +242,7 @@ function windowCreated(context: {
     return;
   }
 
-  console.info('[AWNext Bridge][HOOK] Ventana detectada:', name || 'SP Desktop');
+  console.info('[Library Customizer][HOOK] Ventana detectada:', name || 'SP Desktop');
 
   if (!doc.body) {
     const timer = doc.defaultView?.setInterval(() => {
@@ -261,50 +272,17 @@ function attachToCurrentWindow(): void {
 
 export default definePlugin(() => {
   void (async () => {
-    console.info('[AWN-DEBUG] Starting RPC diagnostic');
-
-    try {
-      const fn = (backend as any)?.bridge_ping;
-
-      if (typeof fn !== 'function') {
-        console.error('[AWN-DEBUG] RPC function unavailable');
-        return;
-      }
-
-      const response = await fn();
-
-      console.info('[AWN-DEBUG] RPC response type:', typeof response);
-      console.info('[AWN-DEBUG] RPC response JSON:', JSON.stringify(response));
-      console.info(
-        '[AWN-DEBUG] RPC response keys:',
-        response && typeof response === 'object' ? Object.keys(response) : 'not an object',
-      );
-
-      const parsed = typeof response === 'string' ? JSON.parse(response) : response;
-
-      if (!parsed || typeof parsed !== 'object' || parsed.ok !== true) {
-        console.error('[AWN-DEBUG] Invalid RPC response:', parsed);
-        return;
-      }
-
-      console.info('[AWN-DEBUG] RPC SUCCESS:', parsed);
-    } catch (error) {
-      console.error('[AWN-DEBUG] RPC FAILED:', error);
+    const status = await identityRpc<InstallationStatus>('get_installation_status');
+    if (!status.ok || !status.mayRun) {
+      console.warn('[Library Customizer] Navigation hooks disabled:', status.error);
+      return;
     }
-  })();
-  console.info('[AWNext Bridge][HOOK] InicializaciÃ³n de AWNext Steam Bridge');
-  try {
     Millennium.AddWindowCreateHook?.(windowCreated);
-    console.info('[AWNext Bridge][HOOK] Window create hook registrado en Millennium');
-  } catch (error) {
-    console.error('[AWNext Bridge][HOOK] Error registrando window create hook:', error);
-  }
-
-  attachToCurrentWindow();
-
+    attachToCurrentWindow();
+  })().catch(error => console.error('[Library Customizer] Installation validation failed:', error));
   return {
-    title: 'AWNext Steam Bridge',
-    icon: <span>â˜…</span>,
+    title: 'Library Customizer',
+    icon: <span>★</span>,
     content: <Manager />,
   };
 });

@@ -1,126 +1,84 @@
-import { useEffect, useMemo, useState } from 'react';
-import { getSteamShortcuts, type SteamShortcut } from '../../core/steam-shortcuts';
-import type { AwnGame, AwnLibraryResponse } from '../models/awn-game';
+import { useEffect, useState } from 'react';
+import { getSteamShortcuts } from '../../core/steam-shortcuts';
+import { identityEpoch, loadIdentityLibrary, recoverIdentity, subscribeIdentityChanges, type IdentityLibrary, type IdentityGame } from '../../core/identity-service';
+import { IdentityEditor } from '../components/IdentityEditor';
 import { checkSources } from '../services/source-checks';
 
-type Match = { shortcut: SteamShortcut; awn?: AwnGame; ambiguous: boolean };
-type CheckResult = Awaited<ReturnType<typeof checkSources>>;
-const norm = (value: string): string => value.normalize('NFKD').toLowerCase()
-  .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
-const buttonStyle: React.CSSProperties = { background: '#29445b', color: '#c7d5e0', border: '1px solid #45657c', borderRadius: 6, padding: '9px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7 };
-const dim: React.CSSProperties = { fontSize: 12, color: '#91a7b8', lineHeight: 1.5 };
-
-function SymbolIcon({ kind }: { kind: 'chevron' | 'refresh' | 'search' | 'link' }) {
-  if (kind === 'refresh') return <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>;
-  if (kind === 'search') return <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="2" fill="none"/><path d="m16 16 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>;
-  if (kind === 'link') return <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 .3l2-2a5 5 0 0 0-7-7l-1.2 1.2M14 11a5 5 0 0 0-7-.3l-2 2a5 5 0 0 0 7 7l1.2-1.2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" /></svg>;
-  return <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>;
-}
-
+const messages: Record<string, string> = {
+  title: 'Título coincidente', steam_id: 'ID Steam corroborado', executable_path: 'Ejecutable compartido', directory_path: 'Directorio compartido',
+  title_mismatch: 'El título corresponde a otro juego', installment_or_year_mismatch: 'Entrega o año diferentes', edition_mismatch: 'Edición diferente o sin confirmar',
+  origin_mismatch: 'Origen diferente', steam_id_mismatch: 'ID Steam diferente', manual_reference: 'Referencia manual guardada',
+  preserved_x360recomp_mapping: 'Asociación propia x360recomp conservada', unique_corroborated_candidate: 'Candidato único con evidencia compatible',
+  multiple_candidates_require_manual_choice: 'Hay varios candidatos: elige manualmente', contradictory_or_insufficient_evidence: 'La evidencia es insuficiente o contradictoria',
+  manual_reference_unavailable: 'La referencia manual no está disponible o es ambigua', no_candidate: 'No hay un candidato compatible', manual_achievement_disable: 'Panel propio deshabilitado por asociación manual',
+};
+const explain = (code: string): string => messages[code] ?? code;
+const button: React.CSSProperties = { background: '#29445b', color: '#fff', border: '1px solid #45657c', padding: '9px 12px', borderRadius: 5, cursor: 'pointer' };
 export function GamesTab() {
-  const [shortcuts, setShortcuts] = useState<SteamShortcut[]>([]);
-  const [games, setGames] = useState<AwnGame[]>([]);
-  const [message, setMessage] = useState('');
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'all' | 'linked' | 'missing'>('all');
+  const [library, setLibrary] = useState<IdentityLibrary | null>(null);
   const [revision, setRevision] = useState(0);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [checksById, setChecksById] = useState<Record<string, CheckResult>>({});
-  const [workingId, setWorkingId] = useState<string | null>(null);
-
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [checks, setChecks] = useState<Record<string, Awaited<ReturnType<typeof checkSources>>>>({});
+  const refresh = () => setRevision(value => value + 1);
+  useEffect(() => subscribeIdentityChanges(refresh), []);
   useEffect(() => {
-    setShortcuts(getSteamShortcuts());
     let cancelled = false;
-    (async () => {
-      try {
-        const rpc = (backend as any)?.list_awn_games;
-        if (typeof rpc !== 'function') throw new Error('AWN RPC unavailable');
-        const response = await rpc();
-        const data = (typeof response === 'string' ? JSON.parse(response) : response) as AwnLibraryResponse;
-        if (!data?.ok || !Array.isArray(data.games)) throw new Error('AWN response invalid');
-        if (!cancelled) { setGames(data.games); setMessage(''); }
-      } catch (err) {
-        if (!cancelled) setMessage(`AWN: ${String(err)}`);
-      }
-    })();
+    setLoading(true);
+    void loadIdentityLibrary(getSteamShortcuts()).then(data => {
+      if (!cancelled) { setLibrary(data); setMessage(data.error ?? ''); setChecks({}); }
+    }).catch(error => { if (!cancelled) { setLibrary(null); setMessage(String(error)); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [revision]);
-
-  const matches = useMemo<Match[]>(() => shortcuts.map(shortcut => {
-    const candidates = games.filter(game => norm(game.name) === norm(shortcut.name));
-    return { shortcut, awn: candidates.length === 1 ? candidates[0] : undefined, ambiguous: candidates.length > 1 };
-  }), [shortcuts, games]);
-
-  const visible = matches.filter(item => {
-    if (!norm(item.shortcut.name).includes(norm(search))) return false;
-    if (filter === 'linked') return !!item.awn;
-    if (filter === 'missing') return !item.awn;
-    return true;
-  });
-
-  const refresh = () => { setShortcuts(getSteamShortcuts()); setRevision(value => value + 1); };
-  const runChecks = async (match: Match) => {
-    if (!match.awn) return;
-    const id = String(match.shortcut.appid);
-    setWorkingId(id);
-    setMessage('');
-    try {
-      const result = await checkSources(match.awn);
-      setChecksById(old => ({ ...old, [id]: result }));
-    } catch (error) { setMessage(`Check failed: ${String(error)}`); }
-    finally { setWorkingId(null); }
+  const runChecks = async (game: IdentityGame) => {
+    const selected = game.resolution.selected;
+    const awn = library?.awnGames.find(g => g.id === selected?.id && g.source === selected?.source);
+    if (!awn) return;
+    const epoch = identityEpoch();
+    try { const result = await checkSources({ ...awn, appid: game.appid }); if (epoch === identityEpoch()) setChecks(old => ({ ...old, [game.key]: result })); }
+    catch (error) { setMessage(String(error)); }
   };
-
-  return <div style={{ background: '#1b2d3d', border: '1px solid #34485a', borderRadius: 8, padding: 18, color: '#c7d5e0', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box', minWidth: 0 }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-      <div><strong style={{ fontSize: 20, color: '#f2f6fb' }}>My non-Steam games</strong>
-        <div style={dim}>{shortcuts.length} Steam shortcuts | {matches.filter(item => !!item.awn).length} exact AWN matches</div>
-      </div>
-      <button type="button" style={buttonStyle} onClick={refresh}><SymbolIcon kind="refresh" />Refresh</button>
+  const visible = (library?.games ?? []).filter(game => game.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()) &&
+    (filter === 'all' || (filter === 'linked' ? ['manual', 'manual-port', 'matched'].includes(game.resolution.status) : ['conflict', 'ambiguous', 'missing'].includes(game.resolution.status))));
+  return <div style={{ color: '#c7d5e0', background: '#1b2d3d', padding: 18, borderRadius: 8 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><h2>Identidad y asociaciones de juegos</h2><button type="button" style={button} disabled={loading} onClick={refresh}>Actualizar</button></div>
+    <p>Cuenta {library?.accountId ?? 'no identificada'} ({library?.accountSource ?? 'sin confirmar'}) · {library?.games.length ?? 0} accesos externos · revisión {library?.revision ?? '—'}</p>
+    {library?.needsMigration && <p>Formato heredado en lectura. El primer guardado crea la versión 1 con respaldo y conserva todos los mappings.</p>}
+    {library && !library.writable && <p role="alert">Edición bloqueada: {library.installation?.error || library.shortcutError || library.error || 'No se ha verificado la cuenta activa.'}</p>}
+    {library?.snapshotError && <p role="status">{library.snapshotError}. Los mappings de ports siguen disponibles.</p>}
+    {library?.installation?.awnOfficialEnabled && <p>AWN oficial presenta los logros generales. Estas asociaciones controlan los datos de Library Customizer; el lector propio de ports se conserva.</p>}
+    {library?.recoveryAvailable && !library.ok && library.token && library.installation?.mayRun && <button type="button" style={button} onClick={() => {
+      void recoverIdentity(library.token!).then(refresh).catch(error => setMessage(String(error)));
+    }}>Recuperar respaldo conservando el archivo dañado</button>}
+    <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+      <input aria-label="Buscar juegos" placeholder="Buscar juegos" value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 1, padding: 9 }} />
+      <select aria-label="Filtro de identidad" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">Todos</option><option value="linked">Resueltos</option><option value="pending">Conflictos / pendientes</option></select>
     </div>
-    <div style={{ display: 'flex', gap: 8, margin: '16px 0', flexWrap: 'wrap' }}>
-      <div style={{ position: 'relative', flex: '1 1 250px', minWidth: 0 }}>
-        <span style={{ position: 'absolute', left: 12, top: 12, color: '#8da9bf', pointerEvents: 'none' }}><SymbolIcon kind="search" /></span>
-        <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search Steam shortcuts" aria-label="Search Steam shortcuts"
-          style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px 11px 37px', color: '#fff', background: '#101c28', border: '1px solid #45657c', borderRadius: 6 }} />
-      </div>
-      <select value={filter} onChange={event => setFilter(event.target.value as typeof filter)} aria-label="Shortcut filter"
-        style={{ padding: 10, color: '#fff', background: '#101c28', border: '1px solid #45657c', borderRadius: 6 }}>
-        <option value="all">All shortcuts</option><option value="linked">AWN matched</option><option value="missing">Needs matching</option>
-      </select>
-    </div>
-    {!shortcuts.length && <p style={{ color: '#f1c176' }}>No Steam shortcuts detected. Open Steam Library, then refresh.</p>}
-    <div style={{ maxHeight: '65vh', overflowY: 'auto', borderTop: '1px solid #34485a' }}>
-      {visible.map(item => {
-        const id = String(item.shortcut.appid);
-        const opened = expandedId === id;
-        const checks = checksById[id];
-        return <div key={id} style={{ borderBottom: '1px solid #34485a', padding: '12px 5px' }}>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <strong style={{ fontSize: 15, color: '#f1f6fa', overflowWrap: 'anywhere' }}>{item.shortcut.name}</strong>
-              <div style={{ ...dim, marginTop: 4 }}>Shortcut {id} | {item.ambiguous ? 'Ambiguous AWN match' : item.awn ? `${item.awn.source} - ${item.awn.unlocked}/${item.awn.total}` : 'No exact AWN match'}</div>
-            </div>
-            <button type="button" aria-expanded={opened} aria-label={`${opened ? 'Hide' : 'Show'} details for ${item.shortcut.name}`}
-              onClick={() => setExpandedId(opened ? null : id)} style={{ ...buttonStyle, width: 40, height: 40, padding: 0 }}>
-              <span style={{ display: 'inline-flex', transform: opened ? 'rotate(90deg)' : undefined, transition: 'transform 120ms' }}><SymbolIcon kind="chevron" /></span>
-            </button>
-          </div>
-          {opened && <div style={{ marginTop: 12, background: '#101e2b', border: '1px solid #35546b', borderRadius: 8, padding: 14 }}>
-            <div style={{ fontWeight: 700, color: '#fff', marginBottom: 10 }}>{item.shortcut.name}</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-              <span style={{ padding: '6px 10px', background: '#253c50', borderRadius: 18, fontSize: 12 }}>Steam: not verified</span>
-              <span style={{ padding: '6px 10px', background: item.awn ? '#244c39' : '#374251', color: item.awn ? '#a5dfa7' : '#b6c5d2', borderRadius: 18, fontSize: 12 }}>AWN: {item.awn ? `${item.awn.unlocked}/${item.awn.total}` : item.ambiguous ? 'ambiguous' : 'no match'}</span>
-              <span style={{ padding: '6px 10px', background: '#253c50', borderRadius: 18, fontSize: 12 }}>Retro: not configured</span>
-            </div>
-            {item.awn ? <button type="button" disabled={workingId === id} style={{ ...buttonStyle, opacity: workingId === id ? 0.6 : 1 }} onClick={() => { void runChecks(item); }}><SymbolIcon kind="link" />{workingId === id ? 'Checking...' : 'Run provider checks'}</button>
-              : <p style={dim}>This shortcut has no unique AWN match. Manual linking will be added later.</p>}
-            {checks && <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>{checks.map(result => <div key={result.provider} style={{ background: '#1d3446', padding: '9px 11px', borderRadius: 6, fontSize: 12, overflowWrap: 'anywhere' }}><strong>{result.provider.toUpperCase()} [{result.status}]</strong>: {result.detail}</div>)}</div>}
-          </div>}
-        </div>;
-      })}
-      {visible.length === 0 && shortcuts.length > 0 && <p style={dim}>No matching shortcuts.</p>}
-    </div>
-    <p style={{ ...dim, marginTop: 16 }}>{message || 'Steam shortcuts only. No Steam achievements are modified.'}</p>
+    {loading && <p role="status">Resolviendo identidades…</p>}
+    {visible.map(game => <article key={game.key} style={{ borderTop: '1px solid #426279', padding: '12px 0' }}>
+      <button type="button" aria-expanded={expanded === game.key} onClick={() => setExpanded(expanded === game.key ? null : game.key)} style={{ ...button, width: '100%', textAlign: 'left' }}>
+        <strong>{game.name}</strong> · shortcut {game.appid}<br />{game.resolution.status}: {explain(game.resolution.explanation)}
+      </button>
+      {expanded === game.key && <div>
+        {game.resolution.selected && <p>AWN: {game.resolution.selected.name} · {game.resolution.selected.source} · {game.resolution.selected.id}</p>}
+        {game.resolution.warnings?.map((warning, i) => <p key={`${warning}:${i}`} role="alert">Referencia manual: {explain(warning)}</p>)}
+        {game.resolution.candidates.length > 0 && <details><summary>Evidencia y candidatos ({game.resolution.candidates.length})</summary>
+          {game.resolution.candidates.slice(0, 20).map((candidate, i) => <div key={`${candidate.source}:${candidate.id}:${i}`} style={{ padding: 8, marginTop: 5, background: '#102334' }}>
+            <strong>{candidate.name}</strong> · {candidate.source} · {candidate.id}
+            <p>{candidate.reasons.map(explain).join(' · ') || 'Sin evidencia positiva'}</p>
+            {candidate.blockers.length > 0 && <p style={{ color: '#efb0a0' }}>{candidate.blockers.map(explain).join(' · ')}</p>}
+          </div>)}
+        </details>}
+        {game.resolution.selected && <button type="button" style={button} onClick={() => void runChecks(game)}>Consultar proveedores</button>}
+        {checks[game.key]?.map(result => <p key={result.provider}>{result.provider}: {result.detail}</p>)}
+        {library && <IdentityEditor key={`${game.key}:${library.token}`} game={game} library={library} saved={() => { setMessage('Asociación guardada; cachés invalidadas.'); }} />}
+      </div>}
+    </article>)}
+    {!loading && library?.ok && visible.length === 0 && <p>No hay accesos que mostrar. Abre la biblioteca y comprueba la cuenta activa.</p>}
+    {message && <p role="status">{message}</p>}
   </div>;
 }
